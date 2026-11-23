@@ -77,13 +77,100 @@ def test_untrusted_host_rejected(client):
     assert r.status_code == 400
 
 
-def test_cors_only_for_local_frontend(client):
-    ok = client.options("/api/dataset", headers={"Origin": "http://127.0.0.1:5173",
-                                                 "Access-Control-Request-Method": "GET",
-                                                 "Access-Control-Request-Headers": "authorization"})
-    assert ok.headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
-    bad = client.get("/api/health", headers={"Origin": "https://evil.example"})
-    assert "access-control-allow-origin" not in bad.headers
+@pytest.mark.parametrize("origin", ["http://127.0.0.1:5173", "https://evil.example", "null"])
+def test_no_cors_for_any_origin(client, origin):
+    pre = client.options("/api/dataset", headers={"Origin": origin, "Access-Control-Request-Method": "GET",
+                                                  "Access-Control-Request-Headers": "authorization"})
+    assert "access-control-allow-origin" not in pre.headers
+    get = client.get("/api/health", headers={"Origin": origin})
+    assert "access-control-allow-origin" not in get.headers
+
+
+# --------------------------------------------------------------------------- browser sessions & CSRF
+APP_ORIGIN = "http://127.0.0.1:8520"
+BROWSER = {"Origin": APP_ORIGIN, "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors"}
+
+
+def _login(client) -> str:
+    code = client.app.state.sessions.mint_login_code()
+    r = client.get(f"/api/session/start?code={code}", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "samesite=strict" in cookie and "path=/api" in cookie
+    info = client.get("/api/session", headers=BROWSER).json()
+    assert info["authenticated"] is True
+    return info["csrf_token"]
+
+
+def test_login_code_is_single_use_and_invalid_codes_fail(client):
+    code = client.app.state.sessions.mint_login_code()
+    assert client.get(f"/api/session/start?code={code}", follow_redirects=False).status_code == 303
+    client.cookies.clear()
+    assert client.get(f"/api/session/start?code={code}", follow_redirects=False).status_code == 401
+    assert client.get("/api/session/start?code=guess", follow_redirects=False).status_code == 401
+    assert client.get("/api/session").status_code == 401
+
+
+def test_session_cookie_reads_and_csrf_protected_writes(client, db_path):
+    csrf = _login(client)
+    assert client.get("/api/dataset", headers=BROWSER).status_code == 200
+    body = {"filters": PERIOD}
+    ok = client.post("/api/analytics/kpis", json=body, headers=BROWSER | {"X-CSRF-Token": csrf})
+    assert ok.status_code == 200
+    # each missing / wrong protection is refused
+    assert client.post("/api/analytics/kpis", json=body, headers=BROWSER).status_code == 403
+    assert client.post("/api/analytics/kpis", json=body,
+                       headers=BROWSER | {"X-CSRF-Token": "x" * 43}).status_code == 403
+    assert client.post("/api/analytics/kpis", json=body, headers=BROWSER | {
+        "X-CSRF-Token": csrf, "Origin": "https://evil.example"}).status_code == 403
+    assert client.post("/api/analytics/kpis", json=body, headers=BROWSER | {
+        "X-CSRF-Token": csrf, "Sec-Fetch-Site": "cross-site"}).status_code == 403
+    no_origin = {"X-CSRF-Token": csrf, "Sec-Fetch-Site": "same-origin"}
+    assert client.post("/api/analytics/kpis", json=body, headers=no_origin).status_code == 403
+    # a forged destructive request changes nothing
+    r = client.post("/api/dataset/clear", json={"confirm": True}, headers=BROWSER | {"Origin": "http://127.0.0.1:9999",
+                                                                                     "X-CSRF-Token": csrf})
+    assert r.status_code == 403 and _counts(db_path)["transactions"] == 9
+
+
+def test_dev_proxy_origin_allowed(client):
+    csrf = _login(client)
+    r = client.post("/api/analytics/kpis", json={}, headers=BROWSER | {
+        "Origin": "http://127.0.0.1:5173", "X-CSRF-Token": csrf})
+    assert r.status_code == 200
+
+
+def test_logout_revokes_session(client):
+    csrf = _login(client)
+    assert client.post("/api/session/logout", headers=BROWSER | {"X-CSRF-Token": csrf}).status_code == 200
+    assert client.get("/api/dataset", headers=BROWSER).status_code == 401
+
+
+def test_bearer_token_refused_from_browsers(client):
+    r = client.get("/api/dataset", headers=AUTH | {"Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 401
+    assert client.post("/api/session/login-code", headers=AUTH | {"Sec-Fetch-Mode": "cors"}).status_code == 401
+    assert client.post("/api/session/login-code").status_code == 401
+    assert "code" in client.post("/api/session/login-code", headers=AUTH).json()
+
+
+def test_no_secrets_paths_or_internals_in_responses(client, db_path, tmp_path):
+    csrf = _login(client)
+    hdr = BROWSER | {"X-CSRF-Token": csrf}
+    texts = [client.get(p, headers=BROWSER).text for p in ("/api/dataset", "/api/meta", "/api/sql",
+                                                            "/api/dataset/rejected", "/api/session")]
+    texts.append(client.post("/api/dataset/demo", json={"n_customers": 200, "confirm": True}, headers=hdr).text)
+    texts.append(client.post("/api/import/preview", files={"file": ("x.xlsx", b"PK broken", "application/zip")},
+                             headers=hdr).text)
+    blob = "\n".join(texts)
+    for secret in (TOKEN, str(db_path), str(tmp_path), "customeriq.db", ".py", "Traceback", "SELECT ", "zipfile"):
+        assert secret not in blob, secret
+    assert "csrf_token" in texts[4]  # the CSRF token is the only per-session value returned
+
+
+def test_json_bodies_capped_at_1mb(client):
+    big = {"names": ["kpis"], "currency": "", "filters": {}, "pad": "x" * 1_100_000}
+    assert client.post("/api/analytics/batch", json=big, headers=AUTH).status_code == 413
 
 
 def test_security_headers_and_no_docs(client):
@@ -168,8 +255,9 @@ def test_dataset_meta_and_rejected(client):
 
 # --------------------------------------------------------------------------- sql library
 def test_sql_library_named_queries_only(client):
-    names = [q["name"] for q in client.get("/api/sql", headers=AUTH).json()["queries"]]
-    assert "kpi_summary" in names
+    queries = client.get("/api/sql", headers=AUTH).json()["queries"]
+    assert "kpi_summary" in [q["name"] for q in queries]
+    assert all(set(q) == {"name"} for q in queries)  # SQL text stays server-side by default
     r = client.post("/api/sql/kpi_summary", json={"filters": PERIOD}, headers=AUTH)
     assert r.status_code == 200 and r.json()["rows"] == 1
     for bad in ("nope", "..%2F..%2Fschema", "kpi_summary.sql"):
@@ -211,7 +299,8 @@ def test_import_preview_then_commit_with_verified_backup(client, db_path, tmp_pa
     r = client.post("/api/import/commit", json=body | {"confirm": True}, headers=AUTH)
     assert r.status_code == 200, r.text
     assert _counts(db_path)["transactions"] == 10
-    backup = tmp_path / "backups" / r.json()["backup"]
+    assert r.json()["backup_created"] is True and "backup" not in r.json()
+    (backup,) = (tmp_path / "backups").glob("auto-*.db")
     assert _counts(backup)["transactions"] == 9  # backup holds the previous dataset
     with sqlite3.connect(backup) as conn:
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -270,7 +359,9 @@ def test_clear_and_demo_require_confirm_and_back_up(client, db_path, tmp_path):
     assert _counts(db_path)["transactions"] == 9
     r = client.post("/api/dataset/clear", json={"confirm": True}, headers=AUTH)
     assert r.status_code == 200 and _counts(db_path)["transactions"] == 0
-    assert _counts(tmp_path / "backups" / r.json()["backup"])["transactions"] == 9
+    assert r.json()["backup_created"] is True
+    (backup,) = (tmp_path / "backups").glob("auto-*.db")
+    assert _counts(backup)["transactions"] == 9
     assert client.post("/api/analytics/kpis", json={}, headers=AUTH).status_code == 409
     d = client.post("/api/dataset/demo", json={"n_customers": 200, "confirm": True}, headers=AUTH)
     assert d.status_code == 200 and _counts(db_path)["transactions"] > 0

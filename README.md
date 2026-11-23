@@ -201,6 +201,11 @@ never contacts external services. The Streamlit app is unaffected and still runs
 .\.venv\Scripts\python.exe -m src.api --port 8520
 ```
 
-Every route except `GET /api/health` needs `Authorization: Bearer <token>`. The token is read from
-`CUSTOMERIQ_API_TOKEN`, or generated once into `.customeriq_token` (git-ignored). Imports, demo
-loads and clears require `"confirm": true` and first take a verified backup into `backups/`.
+Browsers sign in with the **single-use login link** the launcher prints (or
+`python -m src.api login-link`). It sets an `HttpOnly`, `SameSite=Strict` session cookie that page
+scripts cannot read; every non-GET request also needs the session's CSRF token (`X-CSRF-Token`, from
+`GET /api/session`, kept in page memory only) and a same-origin `Origin`. There is no CORS, no API
+docs and no debug route. Local scripts may instead send `Authorization: Bearer <token>`, where the
+token comes from `CUSTOMERIQ_API_TOKEN` or the git-ignored `.customeriq_token`; it is refused when sent
+by a browser, so it can never be embedded in a frontend. Imports, demo loads and clears require
+`"confirm": true` and first take a verified backup into `backups/`.

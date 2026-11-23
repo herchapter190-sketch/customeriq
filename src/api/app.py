@@ -20,8 +20,7 @@ from typing import Any
 import pandas as pd
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from src.analytics.context import AnalysisFilters
@@ -38,12 +37,14 @@ from src.services import registry
 from src.sql.runner import list_queries, load_sql, run_sql
 
 from . import schemas as s
-from .security import BodyLimitMiddleware, SecurityHeadersMiddleware, require_token, resolve_token
+from .security import (SESSION_COOKIE, SESSION_TTL_S, BodyLimitMiddleware, SecurityHeadersMiddleware, SessionStore,
+                       require_auth, require_bearer, resolve_token)
 
 log = logging.getLogger("customeriq.api")
 
 API_VERSION = "1"
-DEFAULT_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")
+DEFAULT_PORT = 8520
+DEV_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")  # Vite dev server (proxies /api)
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 CSV_EXPORTS = ("revenue_by_customer", "rfm_customers", "segment_summary", "monthly_revenue",
                "product_performance", "inactive_customers", "cohort_long", "monthly_acquisition")
@@ -81,23 +82,26 @@ def _json(payload: Any, status: int = 200) -> Response:
 
 # --------------------------------------------------------------------------- app factory
 def create_app(db_path: str | Path | None = None, token: str | None = None, *,
-               backup_dir: str | Path | None = None, origins: tuple[str, ...] = DEFAULT_ORIGINS,
-               max_upload_bytes: int = MAX_UPLOAD_MB * 1024 * 1024, enable_docs: bool = False) -> FastAPI:
-    app = FastAPI(title="CustomerIQ local API", version=API_VERSION,
-                  docs_url="/api/docs" if enable_docs else None, redoc_url=None,
-                  openapi_url="/api/openapi.json" if enable_docs else None)
+               backup_dir: str | Path | None = None, port: int = DEFAULT_PORT,
+               dev_origins: tuple[str, ...] = DEV_ORIGINS, max_upload_bytes: int = MAX_UPLOAD_MB * 1024 * 1024,
+               expose_sql_text: bool = False) -> FastAPI:
+    # No interactive docs, schema or debug routes in any build.
+    app = FastAPI(title="CustomerIQ local API", version=API_VERSION, docs_url=None, redoc_url=None,
+                  openapi_url=None, debug=False)
     app.state.db_path = Path(db_path or DEFAULT_DB_PATH)
     app.state.backup_dir = backup_dir
     app.state.token = token or resolve_token()
+    app.state.sessions = SessionStore()
+    app.state.allowed_origins = frozenset((f"http://127.0.0.1:{port}", f"http://localhost:{port}", *dev_origins))
+    app.state.expose_sql_text = expose_sql_text
     app.state.write_lock = threading.Lock()
     app.state.uploads = OrderedDict()   # upload_id -> (created, filename, raw DataFrame)
     app.state.cache = OrderedDict()     # key -> serialised JSON bytes
     app.state.cache_lock = threading.Lock()
 
-    # Order matters: the last added runs first.
-    app.add_middleware(CORSMiddleware, allow_origins=list(origins), allow_credentials=False,
-                       allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"], max_age=600)
-    app.add_middleware(BodyLimitMiddleware, max_bytes=max_upload_bytes + 64 * 1024)
+    # Order matters: the last added runs first. No CORS middleware on purpose: the
+    # frontend is same-origin (or proxied in dev), so browsers block all cross-origin reads.
+    app.add_middleware(BodyLimitMiddleware, upload_bytes=max_upload_bytes + 64 * 1024)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(ALLOWED_HOSTS))
     app.add_middleware(SecurityHeadersMiddleware)
 
@@ -116,8 +120,42 @@ def create_app(db_path: str | Path | None = None, token: str | None = None, *,
     def health() -> dict:
         return {"status": "ok", "api_version": API_VERSION}
 
-    app.include_router(_router(), dependencies=[Depends(require_token)])
+    _session_routes(app)
+    app.include_router(_router(), dependencies=[Depends(require_auth)])
     return app
+
+
+def _session_routes(app: FastAPI) -> None:
+    @app.get("/api/session/start")
+    def session_start(request: Request, code: str = "") -> Response:
+        """Redeem a single-use login code from the terminal; sets the HttpOnly session cookie."""
+        sid = request.app.state.sessions.redeem(code) if 0 < len(code) <= 128 else None
+        if sid is None:
+            return _json({"detail": "Login link is invalid, expired or already used"}, status=401)
+        response = RedirectResponse("/", status_code=303)  # fixed target: no open redirect
+        response.set_cookie(SESSION_COOKIE, sid, max_age=SESSION_TTL_S, path="/api", httponly=True,
+                            samesite="strict", secure=False)  # plain http on loopback only
+        return response
+
+    @app.get("/api/session")
+    def session_info(request: Request) -> Response:
+        """Session check for the frontend; returns the CSRF token to keep in page memory."""
+        session = request.app.state.sessions.get(request.cookies.get(SESSION_COOKIE))
+        if session is None:
+            return _json({"authenticated": False}, status=401)
+        return _json({"authenticated": True, "csrf_token": session.csrf})
+
+    @app.post("/api/session/logout", dependencies=[Depends(require_auth)])
+    def session_logout(request: Request) -> Response:
+        request.app.state.sessions.revoke(request.cookies.get(SESSION_COOKIE))
+        response = _json({"logged_out": True})
+        response.delete_cookie(SESSION_COOKIE, path="/api", httponly=True, samesite="strict")
+        return response
+
+    @app.post("/api/session/login-code", dependencies=[Depends(require_bearer)])
+    def session_login_code(request: Request) -> dict:
+        """CLI only (bearer token): mint a new single-use login code."""
+        return {"code": request.app.state.sessions.mint_login_code()}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -154,15 +192,15 @@ def _validated(filters: AnalysisFilters) -> AnalysisFilters:
 
 def _kwargs(name: str, req: s.AnalyticsRequest | s.BatchRequest) -> dict:
     if name not in registry.FUNCTIONS:
-        raise HTTPException(404, f"Unknown analysis {name!r}")
+        raise HTTPException(404, "Unknown analysis")
     allowed = registry.FUNCTION_KWARGS.get(name, frozenset())
     supplied = {k: v for k, v in req.model_dump(exclude={"filters", "names"}).items() if v is not None}
     extra = set(supplied) - allowed
     if extra:
-        raise HTTPException(422, f"Analysis {name!r} does not accept: {', '.join(sorted(extra))}")
+        raise HTTPException(422, f"This analysis does not accept: {', '.join(sorted(extra))}")
     missing = registry.REQUIRED_KWARGS.get(name, frozenset()) - set(supplied)
     if missing:
-        raise HTTPException(422, f"Analysis {name!r} requires: {', '.join(sorted(missing))}")
+        raise HTTPException(422, f"This analysis requires: {', '.join(sorted(missing))}")
     return supplied
 
 
@@ -183,13 +221,16 @@ def _run_cached(request: Request, conn: sqlite3.Connection, name: str, filters: 
     return body
 
 
-def _backup(request: Request) -> str | None:
+def _backup(request: Request) -> bool:
+    """Verified backup before a destructive write. Only a boolean leaves the server."""
     try:
         path = backup_database(_db(request), request.app.state.backup_dir)
     except BackupError as exc:
         log.error("Backup failed: %s", exc)
         raise HTTPException(503, "Could not create a verified backup; the dataset was not changed") from None
-    return path.name if path else None
+    if path:
+        log.info("Verified backup written: %s", path.name)
+    return path is not None
 
 
 def _write_done(request: Request) -> None:
@@ -233,8 +274,8 @@ def _router() -> APIRouter:
         return _json(to_jsonable(info))
 
     @r.get("/dataset/rejected")
-    def rejected(request: Request, limit: int = 500) -> Response:
-        limit = max(1, min(limit, 5000))
+    def rejected(request: Request, limit: int = 100) -> Response:
+        limit = max(1, min(limit, 500))  # raw source rows: return only what a review screen needs
         with session(_db(request)) as conn:
             df = run_sql(conn, "SELECT source_row, reason, raw FROM rejected_rows ORDER BY source_row LIMIT :lim",
                          {"lim": limit})
@@ -258,17 +299,20 @@ def _router() -> APIRouter:
         return Response(body, media_type="application/json")
 
     @r.get("/sql")
-    def sql_list() -> dict:
-        return {"queries": [{"name": n, "sql": load_sql(n)} for n in list_queries()]}
+    def sql_list(request: Request) -> dict:
+        # Query text is backend implementation: names only unless explicitly enabled.
+        if request.app.state.expose_sql_text:
+            return {"queries": [{"name": n, "sql": load_sql(n)} for n in list_queries()]}
+        return {"queries": [{"name": n} for n in list_queries()]}
 
     @r.post("/sql/{name}")
     def sql_run(request: Request, name: str, req: s.SqlRequest) -> Response:
         if name not in list_queries():  # only the documented query files, never free text
-            raise HTTPException(404, f"Unknown query {name!r}")
+            raise HTTPException(404, "Unknown query")
         sql = load_sql(name)
         needs_customer = ":customer_id" in sql
         if needs_customer and not req.customer_id:
-            raise HTTPException(422, f"Query {name!r} requires customer_id")
+            raise HTTPException(422, "This query requires customer_id")
         with session(_db(request)) as conn:
             filters = _validated(_filters(conn, req.filters))
             ctx = registry.prepare_context(conn, filters)
@@ -298,7 +342,7 @@ def _router() -> APIRouter:
     @r.post("/reports/csv/{name}")
     def report_csv(request: Request, name: str, req: s.ReportRequest) -> Response:
         if name not in CSV_EXPORTS:
-            raise HTTPException(404, f"Unknown export {name!r}")
+            raise HTTPException(404, "Unknown export")
         with session(_db(request)) as conn:
             filters = _validated(_filters(conn, req.filters))
             df = registry.run(conn, name, filters)
@@ -308,7 +352,8 @@ def _router() -> APIRouter:
     def import_preview(request: Request, file: UploadFile = File(...)) -> Response:
         try:
             raw = read_table(file.file.read(), filename=Path(file.filename or "").name)
-        except Exception as exc:  # parser messages describe the file, not the system
+        except Exception as exc:
+            log.info("Upload rejected: %s", type(exc).__name__)
             raise HTTPException(400, f"Could not read file: {_safe_msg(exc)}") from None
         if raw.empty:
             raise HTTPException(400, "The file contains no data rows")
@@ -345,7 +390,7 @@ def _router() -> APIRouter:
                 result = import_dataframe(conn, raw, req.mapping, source_name=filename, is_synthetic=False,
                                           options=options)
             _write_done(request)
-        payload = _summary_payload(result) | {"backup": backup, "imported": not result.clean.empty}
+        payload = _summary_payload(result) | {"backup_created": backup, "imported": not result.clean.empty}
         if result.clean.empty:
             return _json(payload | {"detail": "No valid rows; the current dataset was kept"}, status=422)
         uploads.pop(req.upload_id, None)
@@ -358,7 +403,7 @@ def _router() -> APIRouter:
             with session(_db(request)) as conn:
                 result = load_demo_dataset(conn, seed=req.seed, n_customers=req.n_customers)
             _write_done(request)
-        return _json(_summary_payload(result) | {"backup": backup})
+        return _json(_summary_payload(result) | {"backup_created": backup})
 
     @r.post("/dataset/clear")
     def dataset_clear(request: Request, _: s.ConfirmRequest) -> Response:
@@ -369,7 +414,7 @@ def _router() -> APIRouter:
                     for table in ("transactions", "rejected_rows", "customer_segments", "dataset_meta"):
                         conn.execute(f"DELETE FROM {table}")
             _write_done(request)
-        return _json({"cleared": True, "backup": backup})
+        return _json({"cleared": True, "backup_created": backup})
 
     return r
 
@@ -380,7 +425,16 @@ def _download(data: bytes, media_type: str, ext: str, name: str = "report") -> R
                     headers={"Content-Disposition": f'attachment; filename="customeriq_{name}_{stamp}.{ext}"'})
 
 
+# Messages raised by our own loader / mapping code. Anything else (pandas, openpyxl,
+# zipfile ...) could describe library internals, so it is replaced by a fixed text.
+_OWN_MESSAGES = ("Unsupported file type", "The file is empty", "File exceeds", "A filename is required",
+                 "Required fields are not mapped", "Each source column", "Mapped columns not found")
+
+
 def _safe_msg(exc: Exception) -> str:
-    """First line of an error message, trimmed, with no filesystem paths."""
-    msg = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
-    return msg[:300].replace(str(Path.cwd()), "")
+    msg = str(exc).splitlines()[0] if str(exc) else ""
+    if isinstance(exc, ValueError) and msg.startswith(_OWN_MESSAGES):
+        return msg[:300]
+    if isinstance(exc, ValueError) and msg.startswith("Could not decode file"):
+        return "Could not decode file; save it as UTF-8 CSV"
+    return "The file is not a readable CSV or Excel workbook"
