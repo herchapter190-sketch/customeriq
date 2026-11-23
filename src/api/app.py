@@ -33,6 +33,7 @@ from src.etl.pipeline import import_dataframe, load_demo_dataset
 from src.insights.engine import Insight
 from src.reports.excel_export import build_excel_workbook
 from src.reports.pdf_report import build_pdf_report
+from src.reports.safe_export import csv_bytes
 from src.services import registry
 from src.sql.runner import list_queries, load_sql, run_sql
 
@@ -346,7 +347,7 @@ def _router() -> APIRouter:
         with session(_db(request)) as conn:
             filters = _validated(_filters(conn, req.filters))
             df = registry.run(conn, name, filters)
-        return _download(df.to_csv(index=False).encode("utf-8"), "text/csv; charset=utf-8", "csv", name)
+        return _download(csv_bytes(df), "text/csv; charset=utf-8", "csv", name)
 
     @r.post("/import/preview")
     def import_preview(request: Request, file: UploadFile = File(...)) -> Response:
@@ -428,7 +429,8 @@ def _download(data: bytes, media_type: str, ext: str, name: str = "report") -> R
 # Messages raised by our own loader / mapping code. Anything else (pandas, openpyxl,
 # zipfile ...) could describe library internals, so it is replaced by a fixed text.
 _OWN_MESSAGES = ("Unsupported file type", "The file is empty", "File exceeds", "A filename is required",
-                 "Required fields are not mapped", "Each source column", "Mapped columns not found")
+                 "Required fields are not mapped", "Each source column", "Mapped columns not found",
+                 "Excel workbook expands", "The file is not a valid Excel workbook")
 
 
 def _safe_msg(exc: Exception) -> str:

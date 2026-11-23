@@ -16,6 +16,7 @@ from src.analytics.context import AnalysisContext
 from src.config import APP_NAME, APP_TAGLINE
 from src.database.connection import get_meta
 from src.insights.engine import generate_insights, insights_frame
+from src.reports.safe_export import harden_workbook
 from src.segments import service as segments
 
 HEADER_FILL = PatternFill("solid", fgColor="14243E")
@@ -100,6 +101,7 @@ def build_excel_workbook(conn: sqlite3.Connection, ctx: AnalysisContext, currenc
     if not ins.empty:
         _write_sheet(wb, "Insights", ins.drop(columns=["value"]))
 
+    harden_workbook(wb)  # customer text such as "=HYPERLINK(...)" must stay text, not a formula
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

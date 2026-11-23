@@ -11,6 +11,8 @@ toolbarMode = "minimal"
 showErrorDetails = true
 
 [server]
+# Loopback only: never listen on LAN/IPv6 interfaces, even if a launch command omits --server.address.
+address = "127.0.0.1"
 headless = true
 maxUploadSize = 200
 # Serves ./static (section animations) at /app/static/ for native looping <video> playback.

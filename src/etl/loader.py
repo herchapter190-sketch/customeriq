@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
@@ -44,6 +45,12 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
 
 SUPPORTED_EXTENSIONS = (".csv", ".txt", ".xlsx", ".xlsm")
 MAX_UPLOAD_MB = 200
+# An .xlsx is a ZIP archive; a small upload can expand to gigabytes of XML ("zip bomb").
+# The declared uncompressed sizes are checked before parsing; Python's zipfile never
+# yields more bytes than a member declares, so the limit also bounds what openpyxl reads.
+# 1 GiB comfortably fits real exports (UCI Online Retail II is ~45 MB zipped).
+MAX_XLSX_EXPANDED_MB = 1024
+MAX_XLSX_MEMBERS = 10_000
 
 
 def _norm(name: str) -> str:
@@ -92,12 +99,29 @@ def read_table(source: str | Path | BinaryIO | bytes, filename: str | None = Non
         raise ValueError(f"File exceeds {MAX_UPLOAD_MB} MB.")
 
     if ext in (".xlsx", ".xlsm"):
+        check_xlsx_expansion(data)
         df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl")
     else:
         df = _read_csv_bytes(data)
     df.columns = [str(c).strip() for c in df.columns]
     df = df.dropna(how="all")
     return df.reset_index(drop=True)
+
+
+def check_xlsx_expansion(data: bytes, max_mb: int | None = None, max_members: int | None = None) -> None:
+    """Reject an Excel workbook whose ZIP contents would expand beyond ``max_mb``."""
+    max_mb = MAX_XLSX_EXPANDED_MB if max_mb is None else max_mb
+    max_members = MAX_XLSX_MEMBERS if max_members is None else max_members
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            infos = zf.infolist()
+    except (zipfile.BadZipFile, OSError):
+        raise ValueError("The file is not a valid Excel workbook.") from None
+    if len(infos) > max_members:
+        raise ValueError(f"Excel workbook expands to too many parts (over {max_members:,}).")
+    if sum(i.file_size for i in infos) > max_mb * 1024 * 1024:
+        raise ValueError(f"Excel workbook expands beyond {max_mb:,} MB when unpacked; "
+                         "export it as CSV or split it into smaller files.")
 
 
 def _read_csv_bytes(data: bytes) -> pd.DataFrame:

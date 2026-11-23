@@ -10,6 +10,7 @@ from src.database.connection import session
 from src.insights.engine import insights_frame
 from src.reports.excel_export import build_excel_workbook
 from src.reports.pdf_report import build_pdf_report
+from src.reports.safe_export import csv_bytes
 from src.ui import data, state
 from src.ui.components import insight_card, note
 from src.ui.pages._common import no_rows, require_filters
@@ -69,7 +70,7 @@ def render() -> None:
         st.caption("Any analytical table as a CSV file for further analysis.")
         choice = st.selectbox("Table", list(CSV_EXPORTS), key="csv_choice", label_visibility="collapsed")
         df = data.get(CSV_EXPORTS[choice], filters)
-        st.download_button(f"Download CSV ({len(df):,} rows)", df.to_csv(index=False).encode("utf-8"),
+        st.download_button(f"Download CSV ({len(df):,} rows)", csv_bytes(df),
                            f"customeriq_{CSV_EXPORTS[choice]}_{stamp}.csv", "text/csv",
                            icon=":material/download:", width="stretch")
 
@@ -91,5 +92,5 @@ def render() -> None:
     if not shown:
         st.caption("No findings of this type for the current selection.")
     frame = insights_frame(insights).drop(columns=["value"])
-    st.download_button("Download findings (CSV)", frame.to_csv(index=False).encode("utf-8"),
+    st.download_button("Download findings (CSV)", csv_bytes(frame),
                        f"customeriq_findings_{stamp}.csv", "text/csv", icon=":material/download:")

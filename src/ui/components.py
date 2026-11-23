@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.insights.engine import Insight
+from src.reports.safe_export import csv_bytes
 
 
 CHAPTERS = {"Executive Overview": "01", "Customer Segmentation": "02", "Revenue Analytics": "03",
@@ -92,7 +93,7 @@ def delta_text(change_pct: float | None) -> str | None:
 
 
 def csv_download(df: pd.DataFrame, filename: str, label: str = "Download CSV", key: str | None = None) -> None:
-    st.download_button(label, df.to_csv(index=False).encode("utf-8"), file_name=filename, mime="text/csv",
+    st.download_button(label, csv_bytes(df), file_name=filename, mime="text/csv",
                        key=key or f"dl_{filename}", icon=":material/download:")
 
 

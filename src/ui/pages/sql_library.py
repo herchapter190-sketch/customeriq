@@ -12,6 +12,7 @@ import streamlit as st
 
 from src.analytics.context import prepare_context
 from src.database.connection import session
+from src.reports.safe_export import csv_bytes
 from src.segments.rfm import build_rfm_sql
 from src.sql.runner import QUERY_DIR, list_queries, run_sql
 from src.ui import data
@@ -104,6 +105,6 @@ def render() -> None:
             st.info("The query ran successfully but returned no rows for the current filters.")
         else:
             st.dataframe(result, hide_index=True, width="stretch", height=min(420, 38 + 35 * len(result)))
-            st.download_button("Download result (CSV)", result.to_csv(index=False).encode("utf-8"),
+            st.download_button("Download result (CSV)", csv_bytes(result),
                                file_name=f"{name}.csv", mime="text/csv", icon=":material/download:",
                                key="sql_download", on_click="ignore")

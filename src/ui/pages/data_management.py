@@ -12,6 +12,7 @@ from src.etl.cleaner import REJECTION_REASONS, clean_transactions
 from src.etl.loader import STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
 from src.etl.pipeline import import_dataframe, load_demo_dataset
 from src.etl.synthetic import DEFAULT_SEED, SYNTHETIC_LABEL, generate_demo_transactions
+from src.reports.safe_export import csv_bytes
 from src.sql.runner import run_sql
 from src.ui import data
 from src.ui.story import story_banner
@@ -125,7 +126,7 @@ def _import_tab() -> None:
     st.markdown("Upload a transaction-level export as **CSV** or **Excel (.xlsx)**. One row per invoice line. "
                 "Required fields: invoice ID, customer ID, date, quantity and unit price. Compatible with the "
                 "public *UCI Online Retail* and *Online Retail II* datasets.")
-    st.download_button("Download a CSV template", TEMPLATE.to_csv(index=False).encode("utf-8"),
+    st.download_button("Download a CSV template", csv_bytes(TEMPLATE),
                        "customeriq_template.csv", "text/csv", icon=":material/download:")
     upload = st.file_uploader("Transaction file", type=["csv", "txt", "xlsx", "xlsm"], key="uploader")
     if upload is None:
@@ -242,7 +243,7 @@ def _demo_tab() -> None:
         st.rerun()
     if b.button("Prepare raw demo file for download", icon=":material/download:", width="stretch"):
         raw = generate_demo_transactions(n_customers=int(n), seed=int(seed))
-        st.session_state["_demo_csv"] = raw.to_csv(index=False).encode("utf-8")
+        st.session_state["_demo_csv"] = csv_bytes(raw)
     if st.session_state.get("_demo_csv"):
         st.download_button("Download raw synthetic CSV (includes injected data-quality issues)",
                            st.session_state["_demo_csv"], "customeriq_synthetic_raw.csv", "text/csv",
