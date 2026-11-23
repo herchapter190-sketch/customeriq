@@ -1,0 +1,20 @@
+[theme]
+base = "light"
+primaryColor = "#641C36"
+backgroundColor = "#F4EBD9"
+secondaryBackgroundColor = "#EADFC8"
+textColor = "#27231F"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true
+
+[server]
+headless = true
+maxUploadSize = 200
+# Serves ./static (section animations) at /app/static/ for native looping <video> playback.
+enableStaticServing = true
+
+[browser]
+gatherUsageStats = false

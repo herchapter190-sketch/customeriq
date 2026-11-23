@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local database (regenerated from the synthetic demo or your own import)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Secrets and local environment
+.env
+.env.*
+*.pem
+*.key
+
+# Streamable copies of assets/animations, regenerated on app start
+static/animations/
+
+# Tooling output
+.playwright-mcp/
+.streamlit/secrets.toml
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Databases and backups anywhere (customer data never goes in git)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backups/
+data/uploads/
+data/exports/
+*.xlsx.tmp
+
+# Secrets / credentials
+secrets.*
+*.secret
+credentials*.json
+api_token*
+.customeriq_token
+
+# Frontend tooling (future stage)
+node_modules/
+web/dist/

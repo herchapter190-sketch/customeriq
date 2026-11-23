@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="40" viewBox="0 0 220 40">
+  <rect x="2" y="8" width="24" height="24" rx="5" fill="none" stroke="#D6FF3F" stroke-width="2"/>
+  <rect x="8" y="20" width="3.5" height="7" fill="#D6FF3F"/>
+  <rect x="12.75" y="15" width="3.5" height="12" fill="#D6FF3F"/>
+  <rect x="17.5" y="12" width="3.5" height="15" fill="#D6FF3F"/>
+  <text x="36" y="28" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="21" font-weight="700" fill="#F4EBD9" letter-spacing="-0.3">Customer<tspan fill="#D6FF3F">IQ</tspan></text>
+</svg>
