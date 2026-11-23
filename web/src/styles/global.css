@@ -395,8 +395,8 @@ a {
 /* ---------------------------------------------------------------- ledger (KPIs) */
 .ledger {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  margin: 52px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  margin: 40px 0 0;
   border-top: 1px solid var(--rule-strong);
 }
 .ledger__item {

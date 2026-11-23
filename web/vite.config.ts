@@ -36,5 +36,21 @@ export default defineConfig({
     },
   },
   preview: { host: '127.0.0.1', port: 4173, strictPort: true },
-  build: { sourcemap: false, chunkSizeWarningLimit: 1500 },
+  build: {
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rolldownOptions: {
+      output: {
+        // Long-lived vendor chunks: React (needed for first paint) and the 3D stack, which only the
+        // lazily-loaded stage imports. React has the higher priority so the 3D group (which pulls in
+        // its dependencies) cannot capture it, and the first paint never waits for three.js.
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-react', priority: 20, test: /[\/]node_modules[\/](react|react-dom|react-router|react-router-dom|scheduler|cookie|set-cookie-parser)[\/]/ },
+            { name: 'vendor-3d', priority: 10, test: /[\/]node_modules[\/](three|@react-three|three-stdlib|troika-[^\/]+|bidi-js|webgl-sdf-generator|maath|meshline|camera-controls|@monogrid|stats-gl|stats\.js|zustand|suspend-react|its-fine|react-use-measure|react-reconciler|use-sync-external-store|gsap|detect-gpu|hls\.js|tunnel-rat|@use-gesture|glsl-noise|@mediapipe)[\/]/ },
+          ],
+        },
+      },
+    },
+  },
 })

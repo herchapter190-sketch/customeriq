@@ -8,6 +8,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Callable
 
+import pandas as pd
+
 from src.analytics import behaviour, cohorts, revenue, risk
 from src.analytics.context import AnalysisFilters, prepare_context
 from src.database.connection import date_bounds, get_meta, has_data
@@ -20,6 +22,22 @@ def _comparison(conn, ctx) -> dict:
     df = revenue.kpi_comparison(conn, ctx)
     return {"table": df, "previous_period": df.attrs["previous_period"],
             "previous_has_data": df.attrs["previous_has_data"]}
+
+
+def _gini(conn, ctx) -> dict:
+    """Same input as the Streamlit Revenue page: net revenue per customer."""
+    return {"gini": revenue.gini_coefficient(revenue.revenue_by_customer(conn, ctx)["net_revenue"])}
+
+
+def _retention_summary(conn, ctx) -> dict:
+    """Customer-weighted average retention curve plus the month-1 / month-3 headline figures."""
+    curve = cohorts.average_retention_curve(cohorts.cohort_long(conn, ctx), ctx.filters.end_date)
+
+    def at(k: int):
+        hit = curve.loc[curve["month_index"] == k, "retention_pct"]
+        return float(hit.iloc[0]) if len(hit) and pd.notna(hit.iloc[0]) else None
+
+    return {"curve": curve, "month_1_pct": at(1), "month_3_pct": at(3)}
 
 
 FUNCTIONS: dict[str, Callable] = {
@@ -35,6 +53,9 @@ FUNCTIONS: dict[str, Callable] = {
     "repeat_vs_one_time": revenue.repeat_vs_one_time,
     "purchase_frequency": behaviour.purchase_frequency,
     "interpurchase_gaps": behaviour.interpurchase_gaps,
+    "interpurchase_summary": lambda conn, ctx: behaviour.interpurchase_summary(behaviour.interpurchase_gaps(conn, ctx)),
+    "gini_coefficient": _gini,
+    "retention_summary": _retention_summary,
     "weekday_hour": behaviour.weekday_hour,
     "order_value_bands": behaviour.order_value_bands,
     "monthly_acquisition": behaviour.monthly_acquisition,

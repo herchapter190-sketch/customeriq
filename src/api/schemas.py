@@ -91,5 +91,11 @@ class DemoRequest(Strict):
     confirm: Literal[True]
 
 
+class DemoRawRequest(Strict):
+    """Same bounds as DemoRequest; no confirmation because nothing is written."""
+    seed: Annotated[int, Field(ge=1, le=99_999_999)] = DEFAULT_SEED
+    n_customers: Annotated[int, Field(ge=200, le=6000)] = 1600
+
+
 class ConfirmRequest(Strict):
     confirm: Literal[True]

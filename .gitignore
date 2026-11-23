@@ -51,3 +51,5 @@ api_token*
 # Frontend tooling (future stage)
 node_modules/
 web/dist/
+web/tsconfig.tsbuildinfo
+*.tsbuildinfo

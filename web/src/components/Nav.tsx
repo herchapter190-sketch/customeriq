@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../api/session'
+import { useDataset } from '../lib/dataset'
 import { ROUTES } from '../routes'
 
 const STATUS_LABEL = { checking: 'Connecting…', ready: 'API connected', 'signed-out': 'Not signed in', offline: 'API offline' }
@@ -9,6 +10,7 @@ export function Nav() {
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
   const { status } = useSession()
+  const { motion, setMotion } = useDataset()
 
   useEffect(() => setOpen(false), [pathname])
   useEffect(() => {
@@ -52,6 +54,9 @@ export function Nav() {
             )
           })}
         </ol>
+        <button type="button" className="rail__motion" aria-pressed={motion} onClick={() => setMotion(!motion)} title="Turn off for less motion and a lighter 3D load on slow machines.">
+          Animations {motion ? 'on' : 'off'}
+        </button>
         <p className={`rail__status is-${status}`} role="status">
           <span className="dot" aria-hidden="true" />
           {STATUS_LABEL[status]}

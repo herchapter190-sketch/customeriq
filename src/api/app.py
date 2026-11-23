@@ -30,6 +30,7 @@ from src.database.connection import data_version, date_bounds, session
 from src.etl.loader import MAX_UPLOAD_MB, STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
 from src.etl.cleaner import clean_transactions
 from src.etl.pipeline import import_dataframe, load_demo_dataset
+from src.etl.synthetic import generate_demo_transactions
 from src.insights.engine import Insight
 from src.reports.excel_export import build_excel_workbook
 from src.reports.pdf_report import build_pdf_report
@@ -405,6 +406,14 @@ def _router() -> APIRouter:
                 result = load_demo_dataset(conn, seed=req.seed, n_customers=req.n_customers)
             _write_done(request)
         return _json(_summary_payload(result) | {"backup_created": backup})
+
+    @r.post("/dataset/demo/raw")
+    def dataset_demo_raw(req: s.DemoRawRequest) -> Response:
+        """Raw synthetic demo export, as the Streamlit download: generated in memory from the
+        validated seed and size (no file is read and no path is accepted); read-only."""
+        raw = generate_demo_transactions(n_customers=req.n_customers, seed=req.seed)
+        return Response(csv_bytes(raw), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="customeriq_synthetic_raw.csv"'})
 
     @r.post("/dataset/clear")
     def dataset_clear(request: Request, _: s.ConfirmRequest) -> Response:

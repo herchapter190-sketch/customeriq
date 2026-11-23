@@ -27,7 +27,9 @@ export function useAsync<T>(load: (signal: AbortSignal) => Promise<T>, deps: unk
 
   useEffect(() => {
     const controller = new AbortController()
-    setState({ state: 'loading' })
+    // Keep showing the last result while the next one loads (no flash of "Loading" on a filter
+    // change); the filter bar shows that an update is in flight.
+    setState((prev) => (prev.state === 'done' ? prev : { state: 'loading' }))
     loadRef
       .current(controller.signal)
       .then((data) => !controller.signal.aborted && setState({ state: 'done', data }))

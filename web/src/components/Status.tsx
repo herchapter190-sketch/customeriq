@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, ApiError, parseLoginCode } from '../api/client'
 import { useSession } from '../api/session'
 import { useScene } from '../scene/store'
@@ -96,9 +96,18 @@ export function SessionGate({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+/** Brief brand veil on first load. It lifts when the 3D scene draws its first frame, or after
+ *  VEIL_MAX_MS at the latest, so a slow GPU or a cold cache never holds the data back. */
+const VEIL_MAX_MS = 1600
 export function BootVeil() {
-  const ready = useScene((s) => s.ready)
+  const sceneReady = useScene((s) => s.ready)
+  const [timedOut, setTimedOut] = useState(false)
   const [gone, setGone] = useState(false)
+  useEffect(() => {
+    const t = window.setTimeout(() => setTimedOut(true), VEIL_MAX_MS)
+    return () => window.clearTimeout(t)
+  }, [])
+  const ready = sceneReady || timedOut
   if (gone) return null
   return (
     <div className={`veil${ready ? ' is-done' : ''}`} onTransitionEnd={() => ready && setGone(true)} aria-hidden={ready}>
