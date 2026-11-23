@@ -190,3 +190,17 @@ SQL results are checked against a small hand-calculated dataset (documented in `
 ## License
 
 MIT © 2026 Abia Iqbal. See [LICENSE](LICENSE).
+
+## Local API (optional)
+
+A token-protected JSON API over the same analytics and database, for a separate frontend.
+It is local-only: it binds to `127.0.0.1`, accepts only `127.0.0.1`/`localhost` Host headers and
+never contacts external services. The Streamlit app is unaffected and still runs on port 8517.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.api --port 8520
+```
+
+Every route except `GET /api/health` needs `Authorization: Bearer <token>`. The token is read from
+`CUSTOMERIQ_API_TOKEN`, or generated once into `.customeriq_token` (git-ignored). Imports, demo
+loads and clears require `"confirm": true` and first take a verified backup into `backups/`.

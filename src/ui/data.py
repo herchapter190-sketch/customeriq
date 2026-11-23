@@ -6,54 +6,16 @@ filter or loading a new dataset always produces fresh numbers.
 """
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 import streamlit as st
 
-from src.analytics import behaviour, cohorts, revenue, risk
 from src.analytics.context import AnalysisFilters, prepare_context
 from src.config import DEFAULT_DB_PATH
-from src.database.connection import data_version, date_bounds, get_meta, has_data, session
-from src.insights.engine import generate_insights
-from src.segments import service as segments
-from src.sql.runner import run_query
+from src.database.connection import data_version, session
+from src.services.registry import FUNCTIONS, dataset_summary  # noqa: F401  (FUNCTIONS re-exported)
 
 DB_PATH = DEFAULT_DB_PATH
-
-FUNCTIONS: dict[str, Callable] = {
-    "kpis": revenue.kpis,
-    "kpi_comparison": lambda conn, ctx: _comparison(conn, ctx),
-    "monthly_revenue": revenue.monthly_revenue,
-    "revenue_by_customer": revenue.revenue_by_customer,
-    "revenue_concentration": revenue.revenue_concentration,
-    "pareto_curve": revenue.pareto_curve,
-    "product_performance": revenue.product_performance,
-    "category_performance": revenue.category_performance,
-    "country_performance": revenue.country_performance,
-    "repeat_vs_one_time": revenue.repeat_vs_one_time,
-    "purchase_frequency": behaviour.purchase_frequency,
-    "interpurchase_gaps": behaviour.interpurchase_gaps,
-    "weekday_hour": behaviour.weekday_hour,
-    "order_value_bands": behaviour.order_value_bands,
-    "monthly_acquisition": behaviour.monthly_acquisition,
-    "cohort_long": cohorts.cohort_long,
-    "monthly_retention": cohorts.monthly_retention,
-    "segment_summary": segments.segment_summary,
-    "rfm_customers": segments.rfm_customers,
-    "rfm_grid": segments.rfm_grid,
-    "customer_orders": segments.customer_orders,
-    "inactive_customers": risk.inactive_customers,
-    "risk_summary": risk.risk_summary,
-    "risk_by_segment": risk.risk_by_segment,
-    "priority_win_back": risk.priority_win_back,
-    "insights": lambda conn, ctx, currency="": generate_insights(conn, ctx, currency),
-}
-
-
-def _comparison(conn, ctx) -> dict:
-    df = revenue.kpi_comparison(conn, ctx)
-    return {"table": df, "previous_period": df.attrs["previous_period"],
-            "previous_has_data": df.attrs["previous_has_data"]}
 
 
 @st.cache_data(show_spinner=False, max_entries=512)
@@ -76,9 +38,7 @@ def dataset_version() -> str:
 @st.cache_data(show_spinner=False)
 def dataset_info(version: str) -> dict:
     with session(DB_PATH) as conn:
-        info = {"has_data": has_data(conn), "meta": get_meta(conn), "bounds": date_bounds(conn)}
-        info["overview"] = run_query(conn, "data_overview").iloc[0].to_dict() if info["has_data"] else {}
-        return info
+        return dataset_summary(conn)
 
 
 def current_dataset() -> dict:
