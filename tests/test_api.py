@@ -183,6 +183,34 @@ def test_security_headers_and_no_docs(client):
         assert client.get(path, headers=AUTH).status_code == 404
 
 
+def test_built_frontend_served_same_origin(db_path, tmp_path):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root></div>", encoding="utf-8")
+    (dist / "assets" / "app.js").write_text("console.log(1)", encoding="utf-8")
+    (tmp_path / "secret.txt").write_text("nope", encoding="utf-8")
+    app = create_app(db_path, TOKEN, backup_dir=tmp_path / "backups", web_dist=dist)
+    with TestClient(app, base_url=BASE) as c:
+        for path in ("/", "/segments", "/reports/x"):  # client-side routes get the page
+            r = c.get(path)
+            assert r.status_code == 200 and "id=root" in r.text, path
+            assert "script-src 'self'" in r.headers["content-security-policy"]
+            assert r.headers["x-frame-options"] == "DENY"
+        assert c.get("/assets/app.js").text == "console.log(1)"
+        assert "default-src 'none'" in c.get("/api/health").headers["content-security-policy"]
+        # API stays protected and API misses stay JSON 404s, never the page
+        assert c.get("/api/dataset").status_code == 401
+        for path in ("/api/nope", "/api", "/openapi.json", "/assets/missing.js", "/assets/../../secret.txt",
+                     "/assets/%2e%2e/%2e%2e/secret.txt", "/favicon.ico"):
+            r = c.get(path)
+            assert r.status_code == 404 and "nope" not in r.text and "id=root" not in r.text, path
+        assert c.get("/", headers={"Host": "evil.example"}).status_code == 400
+    # without a build the API runs alone
+    bare = create_app(db_path, TOKEN, backup_dir=tmp_path / "backups", web_dist=tmp_path / "missing")
+    with TestClient(bare, base_url=BASE) as c:
+        assert c.get("/").status_code == 404 and c.get("/api/health").status_code == 200
+
+
 def test_unexpected_errors_are_generic(client, monkeypatch):
     def boom(conn, ctx):
         raise RuntimeError(r"secret detail C:\Users\someone\data.db")

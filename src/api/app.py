@@ -20,11 +20,12 @@ from typing import Any
 import pandas as pd
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from src.analytics.context import AnalysisFilters
-from src.config import DEFAULT_DB_PATH, RISK_ORDER, SEGMENT_ORDER, CleaningOptions, RFMConfig, RiskConfig
+from src.config import DEFAULT_DB_PATH, PROJECT_ROOT, RISK_ORDER, SEGMENT_ORDER, CleaningOptions, RFMConfig, RiskConfig
 from src.database.backup import BackupError, backup_database
 from src.database.connection import data_version, date_bounds, session
 from src.etl.loader import MAX_UPLOAD_MB, STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
@@ -61,6 +62,12 @@ CSV_EXPORTS = ("revenue_by_customer", "rfm_customers", "segment_summary", "month
 SQL_ROW_CAP = 5000
 UPLOAD_TTL_S = 1800
 MAX_PENDING_UPLOADS = 3
+WEB_DIST = PROJECT_ROOT / "web" / "dist"  # output of  npm run build  in web/
+# The built page loads only its own files. 'unsafe-inline' styles cover React/three.js style attributes,
+# blob: workers cover three.js text rendering, data: is the inline favicon. API responses keep default-src 'none'.
+PAGE_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+            "font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; "
+            "form-action 'self'; frame-ancestors 'none'")
 
 
 # --------------------------------------------------------------------------- serialisation
@@ -94,7 +101,7 @@ def _json(payload: Any, status: int = 200) -> Response:
 def create_app(db_path: str | Path | None = None, token: str | None = None, *,
                backup_dir: str | Path | None = None, port: int = DEFAULT_PORT,
                dev_origins: tuple[str, ...] = DEV_ORIGINS, max_upload_bytes: int = MAX_UPLOAD_MB * 1024 * 1024,
-               expose_sql_text: bool = False) -> FastAPI:
+               expose_sql_text: bool = False, web_dist: str | Path | None = None) -> FastAPI:
     # No interactive docs, schema or debug routes in any build.
     app = FastAPI(title="CustomerIQ local API", version=API_VERSION, docs_url=None, redoc_url=None,
                   openapi_url=None, debug=False)
@@ -132,7 +139,25 @@ def create_app(db_path: str | Path | None = None, token: str | None = None, *,
 
     _session_routes(app)
     app.include_router(_router(), dependencies=[Depends(require_auth)])
+    if web_dist is not None and (Path(web_dist) / "index.html").is_file():
+        _frontend_routes(app, Path(web_dist))  # last, so every /api route above wins
     return app
+
+
+def _frontend_routes(app: FastAPI, dist: Path) -> None:
+    """Serve the built React app same-origin with the API (one local entry point, no CORS)."""
+    for sub in ("assets", "fonts"):
+        if (dist / sub).is_dir():
+            app.mount(f"/{sub}", StaticFiles(directory=dist / sub), name=sub)  # StaticFiles refuses ../ paths
+    index = dist / "index.html"
+
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    def spa(path: str) -> Response:
+        # API misses and missing files stay JSON 404s; any other path is a client-side route.
+        if path == "api" or path.startswith("api/") or "." in path.rsplit("/", 1)[-1]:
+            return _json({"detail": "Not Found"}, status=404)
+        return FileResponse(index, media_type="text/html; charset=utf-8",
+                            headers={"content-security-policy": PAGE_CSP})
 
 
 def _session_routes(app: FastAPI) -> None:

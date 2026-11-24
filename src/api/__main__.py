@@ -1,4 +1,4 @@
-"""Run the local API:            python -m src.api [--port 8520]
+"""Run CustomerIQ (API + built web app): python -m src.api [--port 8520]   (build first: cd web && npm run build)
 Print a fresh browser login link: python -m src.api login-link [--port 8520]
 
 Always binds to 127.0.0.1; there is deliberately no option to listen on other interfaces.
@@ -13,7 +13,7 @@ import urllib.request
 
 import uvicorn
 
-from .app import DEFAULT_PORT, DEFAULT_WEB_PORT, create_app, dev_origins_for
+from .app import DEFAULT_PORT, DEFAULT_WEB_PORT, WEB_DIST, create_app, dev_origins_for
 from .security import resolve_token
 
 
@@ -45,8 +45,13 @@ def main() -> None:
         _login_link(args.port)
         return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    app = create_app(token=resolve_token(), port=args.port, dev_origins=dev_origins_for(args.web_port))
+    app = create_app(token=resolve_token(), port=args.port, dev_origins=dev_origins_for(args.web_port),
+                     web_dist=WEB_DIST)
     code = app.state.sessions.mint_login_code()
+    if (WEB_DIST / "index.html").is_file():
+        print(f"CustomerIQ web app on http://127.0.0.1:{args.port}/ (sign in with the link below)")
+    else:
+        print("Web app not built (run  npm run build  in web/); serving the API only. Streamlit stays on 8517.")
     print(f"CustomerIQ API on http://127.0.0.1:{args.port}\n"
           f"Single-use browser login link (valid 10 minutes):\n  {_login_url(args.port, code)}")
     uvicorn.run(app, host="127.0.0.1", port=args.port, server_header=False, proxy_headers=False,
