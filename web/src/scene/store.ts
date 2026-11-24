@@ -149,18 +149,22 @@ const raw = (hex: string): [number, number, number] => {
   const n = parseInt(hex.slice(1), 16)
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]
 }
+/** Theme B (dark maroon). Key names are kept from the first palette so every scene keeps working:
+ *  `lime` is now the beige highlight, `orange` the light-rose accent, `espresso` the page background. */
 export const HEX = {
-  lime: '#D6FF3F',
+  lime: '#E6A1AE',
   burgundy: '#641C36',
   ivory: '#F4EBD9',
-  espresso: '#27231F',
-  orange: '#E66B43',
+  espresso: '#260D16',
+  orange: '#D18A98',
 } as const
 export const RGB = {
   lime: raw(HEX.lime),
   burgundy: raw(HEX.burgundy),
-  burgundyLift: raw('#9A3457'), // burgundy lifted for visibility on espresso
+  burgundyLift: raw('#B34A59'), // burgundy lifted for visibility on the wine background
   ivory: raw(HEX.ivory),
+  /** pale rose: the woven strands' main colour (pure ivory shaded to greige/bronze on the dark stage) */
+  blush: raw('#F0CDD4'),
   espresso: raw(HEX.espresso),
   orange: raw(HEX.orange),
 }

@@ -24,14 +24,15 @@ export const RING_CENTRE: Vec3 = [0, 0, -16]
 const RADIUS = 16
 const ORDER = ['segments', 'revenue', 'cohorts', 'behaviour', 'inactive', 'data', 'sql', 'reports']
 
-/** Per-district framing in the district's own frame: the subject sits at the local origin,
- *  the camera target is pushed left on wide screens so the subject clears the text column. */
+/** Per-district framing in the district's own frame: the subject sits at the local origin.
+ *  Wide framings keep their tuned height and distance; their sideways offset is dropped in
+ *  worldPose, because the camera's view offset now centres the subject beside the text column. */
 const FRAMING: Record<string, { wide: LocalPose; narrow: LocalPose }> = {
   segments: { wide: { pos: [-2.5, 1.1, 9.2], target: [-2.5, 0.1, 0] }, narrow: { pos: [0, 1.6, 12.5], target: [0, -2.2, 0] } },
   revenue: { wide: { pos: [-2.6, 1.6, 8.8], target: [-2.4, 0.5, 0] }, narrow: { pos: [0, 2.2, 12], target: [0, -1.6, 0] } },
   cohorts: { wide: { pos: [-2.6, 2.6, 8.4], target: [-2.6, -0.1, 0] }, narrow: { pos: [0, 3.4, 11.5], target: [0, -2.1, 0] } },
   behaviour: { wide: { pos: [-2.4, 3.4, 7.6], target: [-2.3, 0.3, 0] }, narrow: { pos: [0, 4.2, 10.5], target: [0, -1.5, 0] } },
-  inactive: { wide: { pos: [-2.6, 4.6, 7.8], target: [-2.6, -0.1, 0] }, narrow: { pos: [0, 6.2, 9.8], target: [0, -2.4, 0] } },
+  inactive: { wide: { pos: [-2.6, 6.5, 11], target: [-2.6, -0.1, 0] }, narrow: { pos: [0, 6.2, 9.8], target: [0, -2.4, 0] } },
   data: { wide: { pos: [-2.4, 1.3, 8.4], target: [-2.3, 0.4, 0] }, narrow: { pos: [0, 1.8, 11.5], target: [0, -1.8, 0] } },
   sql: { wide: { pos: [-2.3, 1.0, 7.8], target: [-2.2, 0.35, 0] }, narrow: { pos: [0, 1.4, 10.5], target: [0, -1.6, 0] } },
   reports: { wide: { pos: [-2.4, 1.6, 7.6], target: [-2.3, 0.55, 0] }, narrow: { pos: [0, 2.0, 10.4], target: [0, -1.4, 0] } },
@@ -63,7 +64,10 @@ const toWorld = (d: DistrictDef, v: Vec3): Vec3 => {
 export function worldPose(slug: string, wide: boolean, zoom = 1): LocalPose | null {
   const d = DISTRICTS[slug]
   if (!d) return null
-  const local = wide ? d.wide : d.narrow
+  const base = wide ? d.wide : d.narrow
+  const local: LocalPose = wide
+    ? { pos: [base.pos[0] - base.target[0], base.pos[1], base.pos[2]], target: [0, base.target[1], base.target[2]] }
+    : base
   const pos = local.pos.map((v, i) => local.target[i] + (v - local.target[i]) * zoom) as Vec3
   return { pos: toWorld(d, pos), target: toWorld(d, local.target) }
 }

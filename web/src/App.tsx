@@ -9,9 +9,10 @@ import { hasWebGL } from './lib/hooks'
 import { routeFor, ROUTES } from './routes'
 import { Fallback2D } from './scene/Fallback2D'
 import { sceneStore } from './scene/store'
+import { useViewMode } from './lib/viewMode'
 
 const Overview = lazy(() => import('./pages/Overview'))
-/** three.js + R3F + every scene: fetched in parallel with the first page, never blocking it. */
+/** three.js + R3F + every scene: only fetched once the reader enters 3D Exploration. */
 const Stage = lazy(() => import('./scene/Stage'))
 
 function Scene({ slug }: { slug: string }) {
@@ -25,6 +26,30 @@ function Scene({ slug }: { slug: string }) {
 function Fallback2DStage({ slug }: { slug: string }) {
   useEffect(() => sceneStore.set({ mode: '2d', ready: true }), [])
   return <Fallback2D dim={slug !== 'overview'} />
+}
+
+/**
+ * On narrow screens the scene sits above the text, then stays fixed behind it once the
+ * page scrolls. This veil (CSS: only shown below 960px) thickens with scroll so headlines
+ * never read across the sphere's wires.
+ */
+function ScrollVeil() {
+  const el = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let raf = 0
+    const update = () => {
+      raf = 0
+      el.current?.style.setProperty('opacity', String(Math.min(1, window.scrollY / 260)))
+    }
+    const onScroll = () => void (raf ||= requestAnimationFrame(update))
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(raf)
+    }
+  }, [])
+  return <div ref={el} className="scroll-veil" aria-hidden="true" />
 }
 
 /** Each environment's HTML layer is its own chunk, loaded on first visit. */
@@ -44,6 +69,9 @@ function Shell() {
   const route = routeFor(pathname)
   const main = useRef<HTMLElement>(null)
   const firstRender = useRef(true)
+  const mode = useViewMode()
+  // The brand veil waits for the first 3D frame, so it only belongs to a visit that opens in 3D.
+  const veil = useRef(mode === '3d').current
 
   useEffect(() => {
     document.title = `${route?.title ?? 'Not found'} · CustomerIQ`
@@ -57,8 +85,13 @@ function Shell() {
 
   return (
     <>
-      <Scene slug={route?.slug ?? 'none'} />
-      <div className="scrim" aria-hidden="true" />
+      {mode === '3d' && (
+        <>
+          <Scene slug={route?.slug ?? 'none'} />
+          <div className="scrim" aria-hidden="true" />
+          <ScrollVeil />
+        </>
+      )}
       <Nav />
       <main ref={main} tabIndex={-1} className={`page page--${route?.slug ?? 'none'}`} key={pathname}>
         <Suspense fallback={<Loading label="Loading view" />}>
@@ -72,7 +105,7 @@ function Shell() {
           </Routes>
         </Suspense>
       </main>
-      <BootVeil />
+      {veil && mode === '3d' && <BootVeil />}
     </>
   )
 }

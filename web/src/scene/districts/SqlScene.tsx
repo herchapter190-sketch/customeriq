@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
+import { onDark } from '../../lib/palette'
 import { SQL_FAMILY_COLORS, type SqlFamily } from '../../lib/domain'
 import { fmtWhole } from '../../lib/format'
 import { Label, pointerCursor, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
@@ -42,15 +43,15 @@ export default function SqlScene() {
     () =>
       names.map(
         () =>
-          new THREE.MeshPhysicalMaterial({ color: '#2f2925', roughness: 0.18, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.3 }),
+          new THREE.MeshPhysicalMaterial({ color: '#3a1422', roughness: 0.18, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.3 }),
       ),
     [names],
   )
   const edgeMats = useMemo(
-    () => (data?.families ?? []).map((f) => new THREE.MeshBasicMaterial({ color: SQL_FAMILY_COLORS[f as SqlFamily] ?? '#8E8578', toneMapped: false })),
+    () => (data?.families ?? []).map((f) => new THREE.MeshBasicMaterial({ color: onDark(SQL_FAMILY_COLORS[f as SqlFamily] ?? '#C9A9AE'), toneMapped: false })),
     [data?.families],
   )
-  const lineMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#D6FF3F', transparent: true, opacity: 0.85, toneMapped: false }), [])
+  const lineMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#E6A1AE', transparent: true, opacity: 0.85, toneMapped: false }), [])
   useDisposable(slabGeo)
   useDisposable(edgeGeo)
   useDisposable(lineGeo)
@@ -80,7 +81,7 @@ export default function SqlScene() {
       g.scale.setScalar(Math.max(0.0001, THREE.MathUtils.damp(g.scale.x, sc, 6, dt)))
       const mat = slabMats[i]
       const glow = on && data?.running ? 0.25 + 0.2 * Math.sin(t * 6) : on ? 0.12 : 0
-      mat.emissive.set('#D6FF3F')
+      mat.emissive.set('#E6A1AE')
       mat.emissiveIntensity = glow * motion + (on ? 0.08 : 0)
     })
     const m = lines.current

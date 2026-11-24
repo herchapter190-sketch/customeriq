@@ -3,58 +3,59 @@
  * src/etl/cleaner.py and the header comments of src/sql/queries/*.sql. No metrics here.
  */
 
-/** Categorical order checked with the dataviz validator against #27231F (all >= 3:1 contrast).
- *  Every cluster also carries a direct label, so identity never rests on colour alone. */
+/** Red-family categorical set for the white card (burgundy, crimson, wine, rose, plum, brick).
+ *  Eight hues from one family cannot all be told apart by colour alone, so every segment always
+ *  carries a direct label or legend text next to its colour. */
 export const SEGMENTS: Record<string, { color: string; description: string; action: string }> = {
   Champions: {
-    color: '#D6FF3F',
+    color: '#4F0D27',
     description: 'Bought recently, buy often and spend the most.',
     action: 'Reward and retain: early access, loyalty benefits, referral asks.',
   },
   'New Customers': {
-    color: '#E66B43',
+    color: '#E6AEB8',
     description: 'Bought recently but only one order so far.',
     action: 'Onboard well: welcome journey, second-purchase incentive.',
   },
   'Loyal Customers': {
-    color: '#F2E6CF',
+    color: '#A3243F',
     description: 'Buy regularly with above-average value; recency is good.',
     action: 'Upsell and cross-sell; invite to loyalty programme.',
   },
   'Potential Loyalists': {
-    color: '#7FA32A',
+    color: '#C9687A',
     description: 'Recent customers with modest frequency or spend.',
     action: 'Nurture with relevant recommendations to build frequency.',
   },
   'Cannot Lose Them': {
-    color: '#C93F62',
+    color: '#7E3A6A',
     description: 'Historically high value but have not purchased for a long time.',
     action: 'Personal win-back outreach; understand why they stopped.',
   },
   'At Risk': {
-    color: '#E8B074',
+    color: '#B8434A',
     description: 'Above-average value in the past, recency is now poor.',
     action: 'Targeted reactivation offer before they lapse completely.',
   },
   Hibernating: {
-    color: '#A56A9C',
+    color: '#6B2B3A',
     description: 'Low recency, low frequency and low spend.',
     action: 'Low-cost reactivation only; avoid heavy discounting.',
   },
   Other: {
-    color: '#8E8578',
+    color: '#C9A9AE',
     description: 'Customers that match none of the segment rules.',
     action: '',
   },
 }
-export const segmentColor = (name: string) => SEGMENTS[name]?.color ?? '#8E8578'
+export const segmentColor = (name: string) => SEGMENTS[name]?.color ?? '#C9A9AE'
 
 export const RISK_ZONES = ['Active', 'Cooling', 'At Risk', 'Lapsed'] as const
 export const RISK_COLORS: Record<string, string> = {
-  Active: '#D6FF3F',
-  Cooling: '#F2E6CF',
-  'At Risk': '#E66B43',
-  Lapsed: '#9A3457',
+  Active: '#4F0D27',
+  Cooling: '#9E2442',
+  'At Risk': '#CF6F81',
+  Lapsed: '#EBB8C0',
 }
 
 export const REJECTION_REASONS: Record<string, string> = {
@@ -107,11 +108,11 @@ export const SQL_DOCS: Record<string, SqlDoc> = {
 }
 
 export const SQL_FAMILY_COLORS: Record<SqlFamily, string> = {
-  Revenue: '#D6FF3F',
-  Customers: '#E66B43',
-  Retention: '#F2E6CF',
-  Behaviour: '#C93F62',
-  Dataset: '#8E8578',
+  Revenue: '#4F0D27',
+  Customers: '#CC6B7D',
+  Retention: '#A3243F',
+  Behaviour: '#7E3A6A',
+  Dataset: '#EBB8C0',
 }
 
 export const CSV_LABELS: Record<string, string> = {

@@ -18,7 +18,7 @@ const PITCH = 0.3
 const CUBE = 0.2
 const FLOOR = -1.25
 type Kind = 'valid' | 'return' | 'rejected'
-const COLOR: Record<Kind, string> = { valid: '#F2E6CF', return: '#B8683F', rejected: '#E66B43' }
+const COLOR: Record<Kind, string> = { valid: '#F4EBD9', return: '#B34A59', rejected: '#D18A98' }
 
 function kinds(a: DataAssembly): Kind[] {
   const { returns, rejected, total } = a.counts
@@ -114,7 +114,7 @@ export default function DataScene() {
     return g
   }, [])
   useDisposable(edges)
-  const lineMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#B8683F', transparent: true, opacity: 0.8 }), [])
+  const lineMat = useMemo(() => new THREE.LineBasicMaterial({ color: '#B34A59', transparent: true, opacity: 0.8 }), [])
   useDisposable(lineMat)
 
   const mesh = useRef<THREE.InstancedMesh>(null)
@@ -143,10 +143,10 @@ export default function DataScene() {
       tmp.updateMatrix()
       m.setMatrixAt(i, tmp.matrix)
       const k = kind[i]
-      colour.set(data.stage === 'empty' ? '#4a403a' : data.stage === 'failed' && k !== 'valid' ? '#E66B43' : COLOR[k])
-      if (data.stage === 'mapping') colour.set('#F2E6CF')
-      if ((data.stage === 'imported' || data.stage === 'loaded') && k === 'valid' && seeded(i, 7) < 0.12) colour.set('#D6FF3F')
-      if (pulse >= 0 && Math.abs((st.pos[i].y - FLOOR) / (SIDE * PITCH) - pulse) < 0.08) colour.set('#D6FF3F')
+      colour.set(data.stage === 'empty' ? '#4f2232' : data.stage === 'failed' && k !== 'valid' ? '#D18A98' : COLOR[k])
+      if (data.stage === 'mapping') colour.set('#F4EBD9')
+      if ((data.stage === 'imported' || data.stage === 'loaded') && k === 'valid' && seeded(i, 7) < 0.12) colour.set('#E6A1AE')
+      if (pulse >= 0 && Math.abs((st.pos[i].y - FLOOR) / (SIDE * PITCH) - pulse) < 0.08) colour.set('#E6A1AE')
       m.setColorAt(i, colour)
     }
     m.count = N

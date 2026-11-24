@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { rows } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
-import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, SearchBox, searchRows, Section, TabPanel, Tabs, Takeaway } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, SearchBox, searchRows, Section, StandardOnly, TabPanel, Tabs, Takeaway, ThreeDOnly } from '../components/ui'
+import { CategoryChart, CurveChart, Panel, shortMonth } from '../components/charts'
+import { SERIES } from '../lib/palette'
 import { useDataset } from '../lib/dataset'
 import { segmentColor } from '../lib/domain'
-import { fmtDate, fmtDelta, fmtMoney, fmtMoneyCompact, fmtMonth, fmtPct, fmtWhole } from '../lib/format'
+import { fmtCompact, fmtDate, fmtDelta, fmtMoney, fmtMoneyCompact, fmtMonth, fmtPct, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
 import { setDistrict, setHover, useDistrict, useHover } from '../scene/store'
 
@@ -129,7 +131,12 @@ function RevenueBody({ data }: { data: Loaded }) {
               </button>
             ))}
           </div>
-          <MonthReadout months={months} metric={metric} />
+          <ThreeDOnly>
+            <MonthReadout months={months} metric={metric} />
+          </ThreeDOnly>
+          <StandardOnly>
+            <TrendCharts months={months} metric={metric} />
+          </StandardOnly>
           <Section title="Every month" aside={<CsvButton rows={months} name="customeriq_monthly_revenue.csv" />}>
             <p className="muted small">Gross is everything sold; returns are refunds for returned items; net is what you kept. A widening gap between gross and net means returns are eating more of your sales.</p>
             <DataTable
@@ -155,6 +162,87 @@ function RevenueBody({ data }: { data: Loaded }) {
       {tab === 'drivers' && <Drivers data={data} />}
       {tab === 'customers' && <TopCustomers data={data} />}
       {tab === 'products' && <Products data={data} />}
+    </>
+  )
+}
+
+function TrendCharts({ months, metric }: { months: MonthRow[]; metric: MetricId }) {
+  const def = METRICS.find((x) => x.id === metric)!
+  const cats = months.map((m) => shortMonth(m.month))
+  const titles = months.map((m) => fmtMonth(m.month))
+  const money = metric === 'net_revenue' || metric === 'gross_sales' || metric === 'avg_order_value'
+  const fmtMetric = (v: number) => (money ? fmtMoney(v) : fmtWhole(v))
+  return (
+    <>
+      <div className="grid">
+        <Panel span={3} title={`${def.label} by month`} note="Pick a measure above. Hover or use the arrow keys on the chart to read each month.">
+          <CategoryChart
+            caption={`${def.label} by month`}
+            categories={cats}
+            titles={titles}
+            series={[{ key: 'm', label: def.label, color: SERIES[0], type: metric === 'active_customers' || metric === 'avg_order_value' ? 'area' : 'bar' }]}
+            values={{ m: months.map((m) => Number(m[metric]) || 0) }}
+            format={(v) => fmtMetric(v)}
+            axisFormat={money ? fmtMoneyCompact : fmtCompact}
+            endLabel={metric === 'active_customers' || metric === 'avg_order_value'}
+            height={300}
+          />
+        </Panel>
+        <Panel span={2} title="Gross sales vs net revenue" note="Net revenue = gross sales minus the value of returned items. Hover a month for both values.">
+          <CategoryChart
+            caption="Gross sales and net revenue by month"
+            categories={cats}
+            titles={titles}
+            series={[
+              { key: 'g', label: 'Gross sales', color: SERIES[0], type: 'bar' },
+              { key: 'n', label: 'Net revenue', color: SERIES[3], type: 'bar' },
+            ]}
+            values={{ g: months.map((m) => m.gross_sales), n: months.map((m) => m.net_revenue) }}
+            format={(v) => fmtMoney(v)}
+            axisFormat={fmtMoneyCompact}
+            height={250}
+          />
+        </Panel>
+        <Panel title="Returns by month" note="Value of returned items, on its own scale.">
+          <CategoryChart
+            caption="Value of returns by month"
+            categories={cats}
+            titles={titles}
+            series={[{ key: 'r', label: 'Returns', color: SERIES[1], type: 'bar' }]}
+            values={{ r: months.map((m) => m.returns_value) }}
+            format={(v) => fmtMoney(v)}
+            axisFormat={fmtMoneyCompact}
+            height={250}
+          />
+        </Panel>
+      </div>
+      <div className="grid grid--2">
+        <Panel title="Orders by month" note="Distinct sales invoices; returns are not orders.">
+          <CategoryChart
+            caption="Orders by month"
+            categories={cats}
+            titles={titles}
+            series={[{ key: 'o', label: 'Orders', color: SERIES[3], type: 'bar' }]}
+            values={{ o: months.map((m) => m.orders) }}
+            format={(v) => fmtWhole(v)}
+            axisFormat={fmtCompact}
+            height={240}
+          />
+        </Panel>
+        <Panel title="Average order value" note="Gross sales divided by orders, per month.">
+          <CategoryChart
+            caption="Average order value by month"
+            categories={cats}
+            titles={titles}
+            series={[{ key: 'a', label: 'Average order value', color: SERIES[0], type: 'line' }]}
+            values={{ a: months.map((m) => m.avg_order_value) }}
+            format={(v) => fmtMoney(v)}
+            axisFormat={fmtMoneyCompact}
+            endLabel
+            height={240}
+          />
+        </Panel>
+      </div>
     </>
   )
 }
@@ -193,8 +281,29 @@ function Drivers({ data }: { data: Loaded }) {
     customer_share_pct: number
     revenue_share_pct: number
   }>(data.repeat_vs_one_time)
+  const pareto = rows<{ cumulative_customer_pct: number; cumulative_revenue_pct: number }>(data.pareto_curve)
+  const gini = data.gini_coefficient.gini
   return (
     <TabPanel id="drivers">
+      <StandardOnly>
+        <div className="grid">
+          <Panel span={2} title="Revenue concentration curve" note="Customers ranked from highest to lowest net revenue (left to right) and the share of revenue they generate together. The further the curve bows above the dashed line, the more concentrated revenue is.">
+            <CurveChart
+              caption="Cumulative share of revenue by cumulative share of customers"
+              points={[{ x: 0, y: 0 }, ...pareto.map((p) => ({ x: p.cumulative_customer_pct, y: p.cumulative_revenue_pct }))]}
+              xLabel="Share of customers (ranked by revenue)"
+              yLabel="Share of revenue"
+              tip={(p) => `Top ${fmtPct(p.x)} of customers generate ${fmtPct(p.y)} of revenue`}
+            />
+          </Panel>
+          <Panel title="Gini coefficient" note="0 = every customer spends the same; 1 = one customer generates all revenue.">
+            <p className="hero-num">{gini != null ? gini.toFixed(2) : 'n/a'}</p>
+            <p className="muted small">
+              {gini == null ? 'Not enough customers with positive revenue to calculate.' : gini >= 0.6 ? 'Highly concentrated: a small group of customers carries most of the revenue.' : gini >= 0.4 ? 'Moderately concentrated revenue.' : 'Revenue is spread fairly evenly across customers.'}
+            </p>
+          </Panel>
+        </div>
+      </StandardOnly>
       <SceneHint>
         The ribbon now traces the concentration curve: customers ranked by revenue, left to right, and the share of revenue
         they generate together.
@@ -207,10 +316,11 @@ function Drivers({ data }: { data: Loaded }) {
             label: `Top ${t.top_pct}% of customers`,
             value: t.revenue_share_pct,
             display: fmtPct(t.revenue_share_pct),
-            color: '#D6FF3F',
+            color: SERIES[0],
             note: `${fmtWhole(t.customers_in_tier)} of ${fmtWhole(t.customer_base)} customers with positive revenue · ${fmtMoneyCompact(t.tier_revenue)}`,
           }))}
         />
+        <ThreeDOnly>
         <Figures
           items={[
             {
@@ -220,6 +330,7 @@ function Drivers({ data }: { data: Loaded }) {
             },
           ]}
         />
+        </ThreeDOnly>
       </Section>
       <Section title="Repeat and one-time customers">
         <Figures
@@ -290,6 +401,26 @@ function TopCustomers({ data }: { data: Loaded }) {
   const view = n === 'All' ? found : found.slice(0, Number(n))
   return (
     <TabPanel id="customers">
+      <StandardOnly>
+        <div className="grid">
+          <Panel span={3} title="Top 10 customers by net revenue" note="Each bar’s label gives the customer’s share of total revenue.">
+            <BarList
+              items={all.slice(0, 10).map((c) => ({
+                key: String(c.customer_id),
+                label: (
+                  <>
+                    Customer {c.customer_id} <span className="muted">· {c.country}</span>
+                  </>
+                ),
+                value: c.net_revenue,
+                display: fmtMoney(c.net_revenue),
+                color: segmentColor(c.segment),
+                note: `${c.segment} · ${fmtWhole(c.orders)} orders · ${fmtPct(c.revenue_share_pct, 2)} of revenue`,
+              }))}
+            />
+          </Panel>
+        </div>
+      </StandardOnly>
       <Section title="Customer league table" aside={<CsvButton rows={all} name="customeriq_revenue_by_customer.csv" label="Download all" />}>
         <div className="toolbar">
           <SearchBox label="Search customers" value={q} onChange={setQ} placeholder="Customer ID, country or segment" />
@@ -380,7 +511,7 @@ function Products({ data }: { data: Loaded }) {
             label: (p.description || p.product_id).slice(0, 48),
             value: p.net_revenue,
             display: fmtMoneyCompact(p.net_revenue),
-            color: '#E66B43',
+            color: SERIES[0],
             note: `${p.category ?? 'No category'} · ${fmtWhole(p.units_sold)} units · ${fmtWhole(p.customers)} customers · ${fmtPct(p.return_rate_pct)} returned`,
           }))}
         />
@@ -394,7 +525,7 @@ function Products({ data }: { data: Loaded }) {
             label: c.category,
             value: c.revenue_share_pct,
             display: fmtPct(c.revenue_share_pct),
-            color: '#F2E6CF',
+            color: SERIES[3],
             note: `${fmtWhole(c.products)} products · ${fmtWhole(c.customers)} customers · ${fmtMoneyCompact(c.net_revenue)}`,
           }))}
         />
@@ -420,6 +551,24 @@ function Products({ data }: { data: Loaded }) {
           ]}
         />
       </Section>
+      <StandardOnly>
+        {countries.length > 0 && (
+          <div className="grid">
+            <Panel span={3} title="Top countries by net revenue" note={`${fmtWhole(countries.length)} countries in the period; the table below lists all of them.`}>
+              <BarList
+                items={[...countries].sort((a, b) => b.net_revenue - a.net_revenue).slice(0, 10).map((c) => ({
+                  key: c.country,
+                  label: c.country,
+                  value: c.net_revenue,
+                  display: fmtMoneyCompact(c.net_revenue),
+                  color: SERIES[2],
+                  note: `${fmtWhole(c.customers)} customers · ${fmtWhole(c.orders)} orders · average order ${fmtMoney(c.avg_order_value)}`,
+                }))}
+              />
+            </Panel>
+          </div>
+        )}
+      </StandardOnly>
       <Section title="Markets" aside={<CsvButton rows={countries} name="customeriq_countries.csv" />}>
         <DataTable
           caption="Revenue by country"

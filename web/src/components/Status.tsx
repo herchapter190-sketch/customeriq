@@ -29,7 +29,7 @@ export function ErrorPanel({ error, onRetry }: { error: unknown; onRetry: () => 
     return (
       <Notice title="Your session has ended" tone="warn">
         <p>Sign in again to keep reading live data.</p>
-        <button className="btn" type="button" onClick={signedOut}>Sign in</button>
+        <button className="btn btn--solid" type="button" onClick={signedOut}>Sign in</button>
       </Notice>
     )
   }
@@ -38,14 +38,14 @@ export function ErrorPanel({ error, onRetry }: { error: unknown; onRetry: () => 
       <Notice title="The CustomerIQ API is not reachable" tone="warn">
         <p>Start it from the project folder, then retry:</p>
         <pre className="cmd">.\.venv\Scripts\python.exe -m src.api</pre>
-        <button className="btn" type="button" onClick={() => (recheck(), onRetry())}>Retry</button>
+        <button className="btn btn--solid" type="button" onClick={() => (recheck(), onRetry())}>Retry</button>
       </Notice>
     )
   }
   return (
     <Notice title="This view could not be loaded" tone="warn">
       <p>{error instanceof Error ? error.message : 'Unexpected error.'}</p>
-      <button className="btn" type="button" onClick={onRetry}>Retry</button>
+      <button className="btn btn--solid" type="button" onClick={onRetry}>Retry</button>
     </Notice>
   )
 }

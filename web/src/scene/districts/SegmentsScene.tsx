@@ -1,7 +1,11 @@
 import { useMemo, useRef } from 'react'
-import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { hash01, segmentColor } from '../../lib/domain'
+import { hash01, segmentColor as baseColor } from '../../lib/domain'
+import { onDark } from '../../lib/palette'
+
+/** Burgundy–rose only: lifted for the dark stage, with dusty pinks re-saturated so they never read as taupe. */
+const segmentColor = (name: string) => onDark(baseColor(name), 0.62, 0.5)
 import { fmtWhole } from '../../lib/format'
 import { Label, lacquer, pointerCursor, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
 import { setFocus, setHover, setPick, useDistrict, useFocus, useHover, type SegCustomer, type SegSummary } from '../store'
@@ -88,7 +92,7 @@ function layout(summary: SegSummary[], customers: SegCustomer[]): Cluster[] {
   return clusters
 }
 
-const DIM = new THREE.Color('#2b2420')
+const DIM = new THREE.Color('#3a1422')
 const geometryHigh = () => new THREE.SphereGeometry(1, 20, 14)
 const geometryLow = () => new THREE.IcosahedronGeometry(1, 2)
 
@@ -99,6 +103,12 @@ export default function SegmentsScene() {
   const { quality, motion } = useSceneEnv()
   const presence = usePresence()
   const clusters = useMemo(() => (data ? layout(data.summary, data.customers) : []), [data])
+  // Phones: name only the three largest clusters (plus the focused/hovered one) so labels never collide.
+  const compact = useThree((s) => s.size.width) < 640
+  const essential = useMemo(
+    () => new Set([...clusters].sort((a, b) => b.seg.customers - a.seg.customers).slice(0, 3).map((c) => c.seg.segment)),
+    [clusters],
+  )
   // Labels sit above their cluster; where two would overlap (similar height, close in x),
   // the later one is lifted so every name stays readable. Display layout only.
   const labelPos = useMemo(() => {
@@ -109,13 +119,21 @@ export default function SegmentsScene() {
         for (let b = a + 1; b < order.length; b++) {
           const A = pts[order[a]]
           const B = pts[order[b]]
-          if (Math.abs(A[0] - B[0]) < 1.5 && Math.abs(A[1] - B[1]) < 0.26) B[1] = A[1] + 0.26
+          if (Math.abs(A[0] - B[0]) < 1.9 && Math.abs(A[1] - B[1]) < 0.3) B[1] = A[1] + 0.3
         }
       }
     }
     return pts
   }, [clusters])
-  const axisTop = useMemo(() => Math.min(2.05, Math.max(1.7, ...labelPos.filter((p) => p[0] < -1.6).map((p) => p[1] + 0.3))), [labelPos])
+  // Axis titles sit outside the clusters: x below the lowest cluster, y left of the leftmost one.
+  const axes = useMemo(() => {
+    if (!clusters.length) return { left: -3.2, right: 2.9, floor: -1.55, top: 1.8 }
+    const left = Math.min(...clusters.map((c) => c.centre.x - c.radius)) - 0.35
+    const right = Math.max(...clusters.map((c) => c.centre.x + c.radius))
+    const floor = Math.min(...clusters.map((c) => c.centre.y - c.radius)) - 0.35
+    const top = Math.max(...labelPos.map((p) => p[1])) + 0.32
+    return { left, right, floor, top }
+  }, [clusters, labelPos])
   const geometry = useMemo(() => (quality === 'high' ? geometryHigh() : geometryLow()), [quality])
   const materials = useMemo(() => clusters.map((c) => lacquer(segmentColor(c.seg.segment))), [clusters])
   const ringMats = useMemo(
@@ -236,11 +254,11 @@ export default function SegmentsScene() {
           </group>
         )
       })}
-      {clusters.map((c, ci) => (
+      {clusters.map((c, ci) => (compact && !essential.has(c.seg.segment) && focus !== c.seg.segment && hovered?.ci !== ci ? null :
         <Label
           key={`l-${c.seg.segment}`}
           position={labelPos[ci]}
-          tone={focus === c.seg.segment ? 'strong' : focus ? 'muted' : 'default'}
+          tone={focus === c.seg.segment || hovered?.ci === ci ? 'strong' : focus ? 'muted' : 'default'}
         >
           <span className="slabel__dot" style={{ background: segmentColor(c.seg.segment) }} />
           {c.seg.segment}
@@ -249,16 +267,16 @@ export default function SegmentsScene() {
       ))}
       <mesh ref={halo} visible={false}>
         <torusGeometry args={[1, 0.06, 8, 48]} />
-        <meshBasicMaterial color="#D6FF3F" toneMapped={false} />
+        <meshBasicMaterial color="#E6A1AE" toneMapped={false} />
       </mesh>
-      <Label position={[-3.2, -1.55, 0.6]} tone="muted" align="left">
-        ← Longer since last order
+      <Label position={[axes.left, axes.floor, 0.4]} tone="axis" align="left">
+        {compact ? '← Older' : '← Longer since last order'}
       </Label>
-      <Label position={[2.9, -1.55, 0.6]} tone="muted" align="right">
-        More recent →
+      <Label position={[axes.right, axes.floor, 0.4]} tone="axis" align="right">
+        {compact ? 'Recent →' : 'More recent →'}
       </Label>
-      <Label position={[-3.3, axisTop, -0.4]} tone="muted" align="left">
-        ↑ More orders per customer
+      <Label position={[axes.left + 0.35, axes.top, 0.4]} tone="axis" align="left">
+        {compact ? '↑ More orders' : '↑ More orders per customer'}
       </Label>
     </group>
   )

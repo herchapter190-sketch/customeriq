@@ -7,6 +7,7 @@ import { useAsync } from '../lib/hooks'
 import { segmentColor, SEGMENTS } from '../lib/domain'
 import { ROUTES } from '../routes'
 import { useScene } from '../scene/store'
+import { useIsStandard } from '../lib/viewMode'
 import { ErrorPanel, Loading, Notice } from './Status'
 
 /* ------------------------------------------------------------------ page head */
@@ -16,9 +17,7 @@ export function PageHead({ slug, children, lede }: { slug: string; children: Rea
   const route = ROUTES[i]
   return (
     <header className="page-head">
-      <p className="eyebrow">
-        {String(i + 1).padStart(2, '0')} — {route?.title}
-      </p>
+      <p className="eyebrow">{route?.title}</p>
       <h1 className="display">{children}</h1>
       {lede && <p className="lede">{lede}</p>}
     </header>
@@ -34,7 +33,7 @@ export function DatasetGate({ children, allowEmpty = false }: { children: ReactN
     return (
       <Notice title="No dataset is loaded yet">
         <p>Load the demo dataset or import your own file, then come back to this view.</p>
-        <Link className="btn" to="/data">
+        <Link className="btn btn--solid" to="/data">
           Open Data Management
         </Link>
       </Notice>
@@ -194,7 +193,9 @@ export function Takeaway({ categories }: { categories: string[] }) {
   if (!ins) return null
   return (
     <aside className={`takeaway is-${ins.kind}`} aria-label="Key finding">
-      <p className="takeaway__meta">{ins.category} · {ins.kind}</p>
+      <p className="takeaway__meta">
+        {ins.category.toLowerCase() === ins.kind.toLowerCase() ? ins.category : `${ins.category} · ${ins.kind}`}
+      </p>
       <p className="takeaway__title">{ins.title}</p>
       <p className="takeaway__action"><span>Action</span> {ins.action}</p>
     </aside>
@@ -423,5 +424,19 @@ export function Section({ title, children, aside }: { title: string; children: R
 /** Tells the reader how to use the 3D scene (or that the 2D view is active). */
 export function SceneHint({ children }: { children: ReactNode }) {
   const mode = useScene((s) => s.mode)
+  if (useIsStandard()) return null
   return <p className="scene-hint">{mode === 'webgl' ? children : '3D is unavailable here, so every value is listed below.'}</p>
+}
+
+/** Content only for Standard Analytics (2D charts) or only for 3D Exploration. */
+export function StandardOnly({ children }: { children: ReactNode }) {
+  return useIsStandard() ? <>{children}</> : null
+}
+export function ThreeDOnly({ children }: { children: ReactNode }) {
+  return useIsStandard() ? null : <>{children}</>
+}
+
+/** Lays sections side by side in Standard Analytics; in 3D they stay one narrow column. */
+export function StdGrid({ children, cols = 2 }: { children: ReactNode; cols?: 2 | 3 }) {
+  return useIsStandard() ? <div className={`grid grid--sections${cols === 2 ? ' grid--2' : ''}`}>{children}</div> : <>{children}</>
 }

@@ -3,15 +3,25 @@ import react from '@vitejs/plugin-react'
 
 // The API (python -m src.api) listens on 127.0.0.1:8520 only. The browser talks to it
 // same-origin through this proxy, so no CORS, tokens or API URLs ever reach frontend code.
-const API_TARGET = 'http://127.0.0.1:8520'
+// Both ports can be overridden (e.g. when 5173 is taken by another app); hosts stay loopback-only.
+// The API must then be started with the matching  --web-port  so its Origin check accepts this server.
+function portFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1024 || n > 65535) throw new Error(`${name} must be a port between 1024 and 65535`)
+  return n
+}
+const WEB_PORT = portFromEnv('CIQ_WEB_PORT', 5173)
+const API_TARGET = `http://127.0.0.1:${portFromEnv('CIQ_API_PORT', 8520)}`
 
 export default defineConfig({
   plugins: [react()],
   server: {
     host: '127.0.0.1',
-    // The API's Origin check only accepts http://127.0.0.1:5173 and http://localhost:5173 for
-    // browser writes, so Vite must never silently move to another port.
-    port: 5173,
+    // The API's Origin check only accepts this exact port (its --web-port) for browser writes,
+    // so Vite must never silently move to another port.
+    port: WEB_PORT,
     strictPort: true,
     proxy: {
       '/api': {

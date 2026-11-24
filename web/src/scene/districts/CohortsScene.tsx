@@ -101,7 +101,7 @@ export default function CohortsScene() {
   const ringMat = useMemo(() => copper({ roughness: 0.4 }), [])
   const ringDim = useMemo(() => new THREE.MeshBasicMaterial({ color: '#F4EBD9', transparent: true, opacity: 0.16 }), [])
   const glassMat = useMemo(() => glass(quality), [quality])
-  const beadMat = useMemo(() => lacquer('#E66B43'), [])
+  const beadMat = useMemo(() => lacquer('#D18A98'), [])
   const beadGeo = useMemo(() => new THREE.SphereGeometry(1, 16, 12), [])
   const hitMat = useMemo(() => new THREE.MeshBasicMaterial({ visible: false }), [])
   useDisposable(pMat)
@@ -148,7 +148,7 @@ export default function CohortsScene() {
         tmp.scale.setScalar(0.01 + 0.05 * Math.sqrt(Math.max(0, b.pct) / 100))
         tmp.updateMatrix()
         mesh.setMatrixAt(j, tmp.matrix)
-        mesh.setColorAt(j, colour.set(sel < 0 || sel === b.i ? (sel === b.i ? '#D6FF3F' : '#E66B43') : '#4a3a33'))
+        mesh.setColorAt(j, colour.set(sel < 0 || sel === b.i ? (sel === b.i ? '#E6A1AE' : '#D18A98') : '#4f2232'))
       })
       mesh.count = beads.length
       mesh.instanceMatrix.needsUpdate = true

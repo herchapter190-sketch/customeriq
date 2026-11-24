@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
-import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
+import { onDark } from '../../lib/palette'
 import { hash01, RISK_COLORS, RISK_ZONES, SEGMENTS } from '../../lib/domain'
 import { Label, lacquer, pointerCursor, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
 import { setFocus, setHover, setPick, useDistrict, useFocus, useHover, usePick } from '../store'
@@ -15,7 +16,7 @@ import { setFocus, setHover, setPick, useDistrict, useFocus, useHover, usePick }
 const BASE = -1.2
 const INNER = 0.3
 const BAND = 0.62
-const TIER: Record<string, string> = { High: '#D6FF3F', Medium: '#F2E6CF', Low: '#8E8578' }
+const TIER: Record<string, string> = { High: '#E6A1AE', Medium: '#F4EBD9', Low: '#B97A88' }
 
 export default function InactiveScene() {
   const data = useDistrict('inactive')
@@ -24,6 +25,10 @@ export default function InactiveScene() {
   const pick = usePick('inactive')
   const { motion } = useSceneEnv()
   const presence = usePresence()
+  // Phones: the page headline starts mid-screen, so the scene is lifted into the band above it.
+  const phone = useThree((s) => s.size.width < 640)
+  // Tablets (below the 1024px desktop layout) also stack the headline under the scene.
+  const tablet = useThree((s) => s.size.width >= 640 && s.size.width < 1024)
 
   const layout = useMemo(() => {
     if (!data) return null
@@ -63,9 +68,9 @@ export default function InactiveScene() {
   const sphere = useMemo(() => new THREE.SphereGeometry(1, 16, 12), [])
   const ring = useMemo(() => new THREE.TorusGeometry(1, 0.08, 6, 28).rotateX(Math.PI / 2), [])
   const mat = useMemo(() => lacquer('#ffffff'), [])
-  const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#E66B43', toneMapped: false }), [])
+  const ringMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#D18A98', toneMapped: false }), [])
   const zoneMats = useMemo(
-    () => RISK_ZONES.map((z) => new THREE.MeshBasicMaterial({ color: RISK_COLORS[z], transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide })),
+    () => RISK_ZONES.map((z) => new THREE.MeshBasicMaterial({ color: onDark(RISK_COLORS[z]), transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide })),
     [],
   )
   const edgeMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#F4EBD9', transparent: true, opacity: 0.25 }), [])
@@ -81,7 +86,7 @@ export default function InactiveScene() {
   const group = useRef<THREE.Group>(null)
   const tmp = useMemo(() => new THREE.Object3D(), [])
   const colour = useMemo(() => new THREE.Color(), [])
-  const dimmed = useMemo(() => new THREE.Color('#3a302b'), [])
+  const dimmed = useMemo(() => new THREE.Color('#46202d'), [])
 
   useFrame((state, dt) => {
     const p = presence.value
@@ -104,7 +109,7 @@ export default function InactiveScene() {
       tmp.scale.setScalar(Math.max(0.0001, k))
       tmp.updateMatrix()
       m.setMatrixAt(i, tmp.matrix)
-      colour.set(hover === i || picked ? '#E66B43' : TIER[c.tier] ?? '#8E8578')
+      colour.set(hover === i || picked ? '#D18A98' : TIER[c.tier] ?? '#B97A88')
       if (!inFocus) colour.lerp(dimmed, 0.8)
       m.setColorAt(i, colour)
       if (c.overdue && inFocus) {
@@ -141,9 +146,12 @@ export default function InactiveScene() {
     setFocus('inactive', c.risk)
   }
   const n = data.customers.length
+  const shownSegment = (typeof hover === 'number' ? data.customers[hover] : data.customers.find((c) => c.id === pick))?.segment
 
   return (
-    <group position={[0.2, 0.1, 0]} scale={0.82}>
+    // Centred (CameraRig already centres the free area) and sized so the rotating outer
+    // segment labels stay inside the viewport at 1440px.
+    <group position={[0, phone ? 1.7 : tablet ? 1.2 : 0.1, 0]} scale={phone ? 0.95 : tablet ? 0.64 : 0.76}>
       <group ref={group}>
         {RISK_ZONES.map((z, k) => (
           <group key={z}>
@@ -158,6 +166,8 @@ export default function InactiveScene() {
         <instancedMesh ref={mesh} args={[sphere, mat, Math.max(1, n)]} onPointerMove={onMove} onPointerOut={onOut} onClick={onClick} frustumCulled={false} />
         <instancedMesh ref={rings} args={[ring, ringMat, Math.max(1, n)]} frustumCulled={false} />
         {layout.sectors.map((s) => {
+          // Phones: segment labels crowd the zone labels, so only the hovered/picked customer's shows.
+          if (phone && s.segment !== shownSegment) return null
           const a = s.start - s.span / 2
           const r = layout.outer + 0.25
           return (

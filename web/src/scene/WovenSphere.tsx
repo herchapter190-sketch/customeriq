@@ -31,7 +31,7 @@ interface Family {
 }
 
 const OUTER: Family[] = [
-  { count: 30, radius: 1.0, tube: 0.0068, color: RGB.ivory, glow: 0.28, freq: 5, amp: 0.03, wobble: 0.05 },
+  { count: 30, radius: 1.0, tube: 0.0068, color: RGB.blush, glow: 0.28, freq: 5, amp: 0.03, wobble: 0.05 },
   { count: 7, radius: 1.014, tube: 0.0056, color: RGB.lime, glow: 1.0, freq: 7, amp: 0.028, wobble: 0.08 },
   { count: 4, radius: 1.17, tube: 0.0042, color: RGB.orange, glow: 0.85, freq: 3, amp: 0.02, wobble: 0.22 },
 ]

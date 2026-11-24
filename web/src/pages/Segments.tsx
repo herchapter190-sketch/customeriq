@@ -3,11 +3,14 @@ import { api } from '../api/client'
 import { rows } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
 import { RfmEditor } from '../components/RuleEditors'
-import { BarList, CsvButton, DatasetGate, DataTable, Details, FilterBar, Figures, PageHead, Pills, SceneHint, SearchBox, searchRows, Section, Takeaway } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, Details, FilterBar, Figures, PageHead, Pills, SceneHint, SearchBox, searchRows, Section, StandardOnly, Takeaway, ThreeDOnly } from '../components/ui'
+import { Panel } from '../components/charts'
+import { heat } from '../lib/palette'
 import { useDataset } from '../lib/dataset'
 import { segmentColor, SEGMENTS } from '../lib/domain'
 import { fmtDate, fmtMoney, fmtMoneyCompact, fmtPct, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
+import { useIsStandard } from '../lib/viewMode'
 import { setDistrict, setFocus, setPick, useDistrict, useFocus, useHover, usePick, useScene } from '../scene/store'
 import { CustomerOrders } from './shared'
 
@@ -120,13 +123,11 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
   const total = customers.length
 
   const { window: [, end], rules } = useDataset()
+  const selectSeg = (k: string) => (setFocus('segments', focus === k ? null : k), setPick('segments', null))
   return (
     <>
       <Takeaway categories={['Segments', 'Risk']} />
-      <SceneHint>
-        Each sphere is one customer, sized by what they have spent. Clusters sit by how recently and how often their members
-        buy. Hover a sphere to read it; click to open that customer.
-      </SceneHint>
+      <SceneHint>Each sphere is a customer, sized by spend. Hover to read one; click to open it.</SceneHint>
       <HoverReadout />
       {total > SCENE_CAP && (
         <p className="muted small">
@@ -134,13 +135,76 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
         </p>
       )}
 
+      <StandardOnly>
       <p className="muted small">
         Groups are worked out <strong>as of {fmtDate(end)}</strong> from each customer’s full history up to that date. They are
         descriptive groupings from transparent rules, not predictions.
         {rules.rfm?.method === 'quantile' && ' Quantile scores give tied values the same (lowest) score, so a grid cell can be empty.'}
       </p>
+      </StandardOnly>
       <RfmEditor />
 
+      <StandardOnly>
+        <div className="grid grid--2">
+          <Panel
+            title="Customers by segment"
+            note="Number of customers in each segment. Select one to focus the page on it."
+            aside={focus && <button type="button" className="linkish" onClick={() => (setFocus('segments', null), setPick('segments', null))}>Show all</button>}
+          >
+            <BarList
+              items={summary.map((s) => ({
+                key: s.segment,
+                label: s.segment,
+                value: s.customers,
+                display: fmtWhole(s.customers),
+                color: segmentColor(s.segment),
+                note: `${fmtPct(s.customer_share_pct)} of customers`,
+              }))}
+              selected={focus}
+              onSelect={selectSeg}
+            />
+          </Panel>
+          <Panel title="Revenue by segment" note="Net revenue and each segment’s share of the total.">
+            <BarList
+              items={summary.map((s) => ({
+                key: s.segment,
+                label: s.segment,
+                value: s.net_revenue,
+                display: fmtMoneyCompact(s.net_revenue),
+                color: segmentColor(s.segment),
+                note: `${fmtPct(s.revenue_share_pct)} of revenue · ${fmtMoney(s.avg_monetary)} per customer`,
+              }))}
+              selected={focus}
+              onSelect={selectSeg}
+            />
+          </Panel>
+        </div>
+        <Section title="Segment profiles">
+          <p className="muted small">What each group looks like and how to approach it. Select a card for the full profile.</p>
+          <div className="seg-cards">
+            {summary.map((s) => (
+              <button
+                key={s.segment}
+                type="button"
+                className="seg-card"
+                style={{ ['--c' as string]: segmentColor(s.segment) }}
+                aria-pressed={focus === s.segment}
+                onClick={() => selectSeg(s.segment)}
+              >
+                <span className="seg-card__name">{s.segment}</span>
+                <span className="seg-card__desc">{SEGMENTS[s.segment]?.description}</span>
+                <span className="seg-card__nums">
+                  <span><b>{fmtWhole(s.customers)}</b>customers</span>
+                  <span><b>{fmtPct(s.revenue_share_pct)}</b>of revenue</span>
+                  <span><b>{fmtWhole(s.avg_recency_days)}</b>days since order</span>
+                  <span><b>{s.avg_frequency.toFixed(1)}</b>orders each</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Section>
+      </StandardOnly>
+      <ThreeDOnly>
       <Section
         title="Segments by share of revenue"
         aside={
@@ -166,6 +230,8 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
           onSelect={(k) => (setFocus('segments', focus === k ? null : k), setPick('segments', null))}
         />
       </Section>
+
+      </ThreeDOnly>
 
       {selected && <SegmentProfile seg={selected} />}
 
@@ -232,9 +298,9 @@ function RfmGrid({ grid }: { grid: GridRow[] }) {
               <th scope="row">R{r}</th>
               {[1, 2, 3, 4, 5].map((f) => {
                 const g = cell.get(`${r}-${f}`)
-                const a = g ? 0.08 + 0.72 * (g.customers / max) : 0
+                const c = g ? heat(g.customers / max) : null
                 return (
-                  <td key={f} style={{ background: `rgb(214 255 63 / ${a})`, color: a > 0.45 ? '#27231F' : undefined }}>
+                  <td key={f} style={c ? { background: c.bg, color: c.fg } : undefined} title={g ? `R${r} F${f}: ${fmtWhole(g.customers)} customers, ${fmtMoney(g.net_revenue)} net revenue` : `R${r} F${f}: no customers`}>
                     {g ? fmtWhole(g.customers) : '—'}
                   </td>
                 )
@@ -243,7 +309,8 @@ function RfmGrid({ grid }: { grid: GridRow[] }) {
           ))}
         </tbody>
       </table>
-      <p className="muted small">Higher recency = bought more recently; higher frequency = more orders. Cells show customers.</p>
+      <p className="heat-scale" aria-hidden="true">Fewer <span className="heat-scale__bar" /> More customers</p>
+      <p className="muted small">Higher recency = bought more recently; higher frequency = more orders. Cells show customers; hover a cell for its revenue.</p>
     </div>
   )
 }
@@ -252,7 +319,8 @@ function HoverReadout() {
   const data = useDistrict('segments')
   const hover = useHover('segments')
   const mode = useScene((s) => s.mode)
-  if (mode === '2d') return null
+  const standard = useIsStandard()
+  if (mode === '2d' || standard) return null
   const c = typeof hover === 'number' ? data?.customers[hover] : undefined
   return (
     <aside className="readout" aria-live="polite">

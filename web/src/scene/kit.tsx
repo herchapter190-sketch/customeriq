@@ -71,7 +71,7 @@ export function District({ slug, active, children }: { slug: string; active: boo
           opacity={0.55}
           resolution={quality === 'high' ? 512 : 256}
           frames={reduced ? 1 : Infinity}
-          color="#0d0a08"
+          color="#12050a"
         />
       )}
     </group>
@@ -81,23 +81,25 @@ export function District({ slug, active, children }: { slug: string; active: boo
 /* ------------------------------------------------------------------ lighting */
 
 /**
- * Studio lighting built from procedural light panels (no HDR download): a warm ivory key,
- * a burgundy bounce and a burnt-orange kicker, so lacquer, satin, glass and copper read as
- * physical materials. Rendered once into an environment map.
+ * Studio lighting built from procedural light panels (no HDR download): a blush-white key,
+ * a burgundy bounce and a rose kicker, so lacquer, satin and glass read as physical materials.
+ * The key is deliberately blush rather than warm ivory: a yellow-leaning key turned rose and
+ * maroon surfaces bronze in their highlights. Rendered once into an environment map.
  */
+const KEY = '#F6ECEF'
 export function StudioLighting() {
   return (
     <>
       <Environment resolution={256} frames={1}>
-        <Lightformer form="rect" intensity={2.4} color="#F4EBD9" position={[-4, 5, 3]} scale={[6, 3, 1]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={1.1} color="#F4EBD9" position={[5, 2, 4]} scale={[3, 5, 1]} target={[0, 0, 0]} />
-        <Lightformer form="ring" intensity={1.6} color="#E66B43" position={[4, -3, -4]} scale={3} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={2.4} color={KEY} position={[-4, 5, 3]} scale={[6, 3, 1]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={1.1} color={KEY} position={[5, 2, 4]} scale={[3, 5, 1]} target={[0, 0, 0]} />
+        <Lightformer form="ring" intensity={1.6} color="#D18A98" position={[4, -3, -4]} scale={3} target={[0, 0, 0]} />
         <Lightformer form="rect" intensity={0.8} color="#641C36" position={[0, -5, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[10, 10, 1]} />
-        <Lightformer form="rect" intensity={0.5} color="#D6FF3F" position={[-6, 0, -3]} scale={[1, 6, 1]} target={[0, 0, 0]} />
+        <Lightformer form="rect" intensity={0.5} color="#E6A1AE" position={[-6, 0, -3]} scale={[1, 6, 1]} target={[0, 0, 0]} />
       </Environment>
-      <ambientLight intensity={0.18} color="#F4EBD9" />
-      <directionalLight position={[-5, 8, 6]} intensity={1.6} color="#F4EBD9" />
-      <directionalLight position={[6, -2, -4]} intensity={0.7} color="#E66B43" />
+      <ambientLight intensity={0.18} color={KEY} />
+      <directionalLight position={[-5, 8, 6]} intensity={1.6} color={KEY} />
+      <directionalLight position={[6, -2, -4]} intensity={0.7} color="#D18A98" />
     </>
   )
 }
@@ -121,7 +123,7 @@ export const satin = (color: string, extra: THREE.MeshPhysicalMaterialParameters
     roughness: 0.38,
     metalness: 0.55,
     sheen: 1,
-    sheenColor: new THREE.Color('#E66B43'),
+    sheenColor: new THREE.Color('#D18A98'),
     sheenRoughness: 0.35,
     clearcoat: 0.6,
     clearcoatRoughness: 0.25,
@@ -131,7 +133,7 @@ export const satin = (color: string, extra: THREE.MeshPhysicalMaterialParameters
   })
 
 export const copper = (extra: THREE.MeshPhysicalMaterialParameters = {}) =>
-  new THREE.MeshPhysicalMaterial({ color: '#B8683F', metalness: 1, roughness: 0.32, envMapIntensity: 1.3, ...extra })
+  new THREE.MeshPhysicalMaterial({ color: '#B34A59', metalness: 1, roughness: 0.32, envMapIntensity: 1.3, ...extra })
 
 /** Glass is real transmission on capable GPUs and a cheap clear-coat shell otherwise. */
 export const glass = (quality: 'high' | 'low', extra: THREE.MeshPhysicalMaterialParameters = {}) =>
@@ -176,7 +178,7 @@ export function Label({
 }: {
   position: [number, number, number]
   children: ReactNode
-  tone?: 'default' | 'strong' | 'muted' | 'lime' | 'orange'
+  tone?: 'default' | 'strong' | 'muted' | 'axis' | 'lime' | 'orange'
   align?: 'center' | 'left' | 'right'
 }) {
   return (

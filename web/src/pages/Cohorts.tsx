@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api } from '../api/client'
 import { rows } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
-import { BarList, CsvButton, DatasetGate, DataTable, Details, FilterBar, Figures, PageHead, SceneHint, Section, Takeaway } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, Details, FilterBar, Figures, PageHead, SceneHint, Section, StandardOnly, Takeaway, ThreeDOnly } from '../components/ui'
+import { CategoryChart, Panel, shortMonth } from '../components/charts'
+import { heat, SERIES } from '../lib/palette'
+import { useIsStandard } from '../lib/viewMode'
 import { useDataset } from '../lib/dataset'
 import { fmtMonth, fmtPct, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
@@ -97,7 +100,7 @@ function HorizonSlider({ horizon, horizonMax, maxK, onChange }: { horizon: numbe
   )
 }
 
-function AverageRetention({ avg, cohorts, horizon, slider }: { avg: RetentionAvg; cohorts: number; horizon: number; slider: ReactNode }) {
+function AverageRetention({ avg, cohorts, horizon, slider, ring }: { avg: RetentionAvg; cohorts: number; horizon: number; slider: ReactNode; ring: CohortRing | null }) {
   // The API returns the full curve; only the display is trimmed (Streamlit: average_retention_curve(max_months=...)).
   const later = avg.curve.filter((r) => r.month_index >= 1 && r.month_index <= horizon && r.retention_pct != null)
   return (
@@ -110,6 +113,31 @@ function AverageRetention({ avg, cohorts, horizon, slider }: { avg: RetentionAvg
           { label: 'Month-3 retention', value: avg.m3 != null ? fmtPct(avg.m3) : 'n/a', note: 'Customer-weighted average across all cohorts old enough to be observed at month 3.' },
         ]}
       />
+      <StandardOnly>
+        {later.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <CategoryChart
+              caption={ring ? `Average retention curve compared with the ${fmtMonth(ring.cohort)} cohort` : 'Average retention curve'}
+              categories={later.map((r) => `M+${r.month_index}`)}
+              titles={later.map((r) => `Month +${r.month_index} after first purchase`)}
+              series={[
+                { key: 'avg', label: 'Average across cohorts', color: SERIES[0], type: 'area' },
+                ...(ring ? [{ key: 'sel', label: `Cohort ${fmtMonth(ring.cohort)}`, color: SERIES[3], type: 'line' as const, dashed: true }] : []),
+              ]}
+              values={{
+                avg: later.map((r) => r.retention_pct),
+                ...(ring ? { sel: later.map((r) => ring.points.find((p) => p.k === r.month_index)?.pct ?? null) } : {}),
+              }}
+              format={(v) => fmtPct(v)}
+              axisFormat={(v) => `${Math.round(v)}%`}
+              endLabel
+              height={280}
+            />
+            <p className="muted small">Only cohorts old enough to be observed count at each month. Select a cohort in the matrix or the cohort-size chart to compare it with the average.</p>
+          </div>
+        )}
+      </StandardOnly>
+      <ThreeDOnly>
       {later.length > 0 && (
         <BarList
           max={Math.max(1, ...later.map((r) => r.retention_pct!))}
@@ -119,11 +147,12 @@ function AverageRetention({ avg, cohorts, horizon, slider }: { avg: RetentionAvg
             label: `Month +${r.month_index}`,
             value: r.retention_pct!,
             display: fmtPct(r.retention_pct),
-            color: '#D6FF3F',
+            color: SERIES[0],
             note: `${fmtWhole(r.active_customers)} of ${fmtWhole(r.eligible_customers)} customers · ${fmtWhole(r.cohorts)} cohorts`,
           }))}
         />
       )}
+      </ThreeDOnly>
     </Section>
   )
 }
@@ -137,15 +166,14 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
   const horizonMax = Math.max(3, maxK)
   const [horizon, setHorizon] = useState(Math.min(12, horizonMax))
   const slider = <HorizonSlider horizon={horizon} horizonMax={horizonMax} maxK={maxK} onChange={setHorizon} />
+  const standard = useIsStandard()
 
   return (
     <>
       <Takeaway categories={['Retention', 'Behaviour']} />
-      <SceneHint>
-        Each ring is one cohort, oldest on the outside. Months since first purchase run clockwise from the top; beads grow
-        with the share still buying, and the drifting particles are those customers. Click a ring, or a row below, to isolate it.
-      </SceneHint>
+      <SceneHint>One ring per cohort, oldest outside; months run clockwise from the top. Click a ring to isolate it.</SceneHint>
 
+      {(ring || !standard) && (
       <Section
         title={ring ? `Cohort ${fmtMonth(ring.cohort)}` : 'Select a cohort'}
         aside={focus != null && <button type="button" className="linkish" onClick={() => setFocus('cohorts', null)}>Show all</button>}
@@ -163,7 +191,7 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
                   label: `Month +${p.k}`,
                   value: p.pct,
                   display: fmtPct(p.pct),
-                  color: '#D6FF3F',
+                  color: SERIES[3],
                   note: `${fmtWhole(p.active)} customers`,
                 }))}
               />
@@ -172,11 +200,44 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
             )}
           </div>
         ) : (
-          <p className="muted small">Hover or click a ring in the scene, or pick a cohort in the matrix.</p>
+          <p className="muted small">{standard ? 'Pick a cohort in the matrix or the cohort-size chart to read its retention month by month.' : 'Hover or click a ring in the scene, or pick a cohort in the matrix.'}</p>
         )}
       </Section>
+      )}
 
-      <AverageRetention avg={avg} cohorts={rings.length} horizon={horizon} slider={slider} />
+      <AverageRetention avg={avg} cohorts={rings.length} horizon={horizon} slider={slider} ring={ring} />
+
+      <StandardOnly>
+        <div className="grid grid--2">
+          <Panel title="Cohort sizes" note="New customers acquired in each month. Click a bar to select that cohort.">
+            <CategoryChart
+              caption="Customers in each acquisition cohort"
+              categories={rings.map((r) => shortMonth(r.cohort))}
+              titles={rings.map((r) => `Cohort ${fmtMonth(r.cohort)}`)}
+              series={[{ key: 'n', label: 'Customers acquired', color: SERIES[0], type: 'bar' }]}
+              values={{ n: rings.map((r) => r.size) }}
+              format={(v) => `${fmtWhole(v)} customers`}
+              axisFormat={(v) => fmtWhole(v)}
+              selected={typeof focus === 'number' ? focus : null}
+              onSelect={(i) => setFocus('cohorts', focus === i ? null : i)}
+              height={240}
+            />
+          </Panel>
+          <Panel title="Month-over-month retention" note="Of last month’s customers, the share who ordered again this month.">
+            <CategoryChart
+              caption="Month-over-month customer retention"
+              categories={mom.map((m) => shortMonth(m.month))}
+              titles={mom.map((m) => fmtMonth(m.month))}
+              series={[{ key: 'p', label: 'Retention rate', color: SERIES[3], type: 'line' }]}
+              values={{ p: mom.map((m) => m.retention_rate_pct) }}
+              format={(v) => fmtPct(v)}
+              axisFormat={(v) => `${Math.round(v)}%`}
+              endLabel
+              height={240}
+            />
+          </Panel>
+        </div>
+      </StandardOnly>
 
       <CohortMatrix rings={rings} maxK={maxK} idx={idx} focus={typeof focus === 'number' ? focus : null} horizon={horizon} slider={slider} />
 
@@ -259,9 +320,9 @@ function CohortMatrix({ rings, maxK, idx, focus, horizon, slider }: { rings: Coh
                 {cols.map((k) => {
                   const v = cell(r, k)
                   if (v == null) return <td key={k} className="heat__na" />
-                  const a = k === 0 && metric === 'pct' ? 0.12 : 0.06 + Math.min(1, v / scale) * 0.82
+                  const c = heat(Math.min(1, v / scale))
                   return (
-                    <td key={k} style={{ background: `rgb(214 255 63 / ${a})`, color: a > 0.5 ? '#27231F' : undefined }}>
+                    <td key={k} style={{ background: c.bg, color: c.fg }} title={`${fmtMonth(r.cohort)} · M${k}: ${metric === 'pct' ? fmtPct(v) : `${fmtWhole(v)} customers`}`}>
                       {metric === 'pct' ? Math.round(v) : fmtWhole(v)}
                     </td>
                   )
@@ -271,9 +332,10 @@ function CohortMatrix({ rings, maxK, idx, focus, horizon, slider }: { rings: Coh
           </tbody>
         </table>
       </div>
+      <p className="heat-scale" aria-hidden="true">Fewer <span className="heat-scale__bar" /> More</p>
       <p className="muted small">
         Each row is the customers who first bought in that month (n). Moving right, each cell shows {metric === 'pct' ? 'the share' : 'how many'} who
-        bought again 1, 2, 3… months later; darker means more came back. Blank cells are months not reached yet.
+        bought again 1, 2, 3… months later; lighter means more came back. Blank cells are months not reached yet.
       </p>
       <Details summary="Methodology">
         <ul className="small">

@@ -9,6 +9,12 @@ import { CSV_LABELS } from '../lib/domain'
 import { useAsync } from '../lib/hooks'
 import { patchDistrict, sceneStore, setDistrict, setFocus, setHover, setPick, useDistrict, useHover } from '../scene/store'
 
+/** YYYYMMDD_HHMM in local time, matching the API's report file names (time.strftime). */
+function localStamp(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`
+}
+
 const KINDS = [
   { id: 'all', label: 'All' },
   { id: 'risk', label: 'Risks' },
@@ -72,7 +78,7 @@ function ReportsBody() {
 
   return (
     <>
-      <SceneHint>Hover an export to light its object; generating one sets it in motion. The orbs above are this period's findings; hover one to read its title.</SceneHint>
+      <SceneHint>Hover an export to light it. The orbs are this period's findings.</SceneHint>
       {dataset?.meta.is_synthetic && <p className="muted small">The demo dataset is loaded, so every report is labelled as synthetic.</p>}
       <p className="muted small">
         Reports use the filters currently selected (period, segments, scoring and inactivity rules) and the currency symbol chosen in the
@@ -80,8 +86,14 @@ function ReportsBody() {
       </p>
       <div className="exports">
         <article className="export" {...hoverProps('pdf')}>
-          <h3>PDF report</h3>
-          <p>Executive summary, KPIs, revenue, RFM segmentation, cohort retention, inactive customers, findings and recommendations, with charts and page numbers.</p>
+          <span className="export__format" style={{ ['--c' as string]: '#6E1530' }}>PDF</span>
+          <h3>Executive report</h3>
+          <p>A presentation-ready summary of the selected period, with charts and page numbers.</p>
+          <ul>
+            <li>Executive summary and headline KPIs</li>
+            <li>Revenue, RFM segmentation and cohort retention</li>
+            <li>Inactive customers, findings and recommendations</li>
+          </ul>
           <div className="actions">
             <button type="button" className="btn btn--solid" disabled={busy !== null} onClick={() => make('pdf')}>
               {busy === 'pdf' ? 'Building…' : 'Download PDF'}
@@ -90,8 +102,14 @@ function ReportsBody() {
           {status.pdf && <p className={`status-line ${status.pdf.ok ? 'is-ok' : 'is-bad'}`} role="status">{status.pdf.text}</p>}
         </article>
         <article className="export" {...hoverProps('xlsx')}>
+          <span className="export__format" style={{ ['--c' as string]: '#A8334F' }}>XLSX</span>
           <h3>Excel workbook</h3>
-          <p>KPIs, segments, RFM customers, a colour-scaled cohort matrix, products, inactive customers and insights. Text cells are formula-safe.</p>
+          <p>Every analysis as its own sheet for further work. Text cells are formula-safe.</p>
+          <ul>
+            <li>KPIs, segments and RFM customers</li>
+            <li>Colour-scaled cohort matrix and products</li>
+            <li>Inactive customers and insights</li>
+          </ul>
           <div className="actions">
             <button type="button" className="btn" disabled={busy !== null} onClick={() => make('xlsx')}>
               {busy === 'xlsx' ? 'Building…' : 'Download workbook'}
@@ -100,8 +118,13 @@ function ReportsBody() {
           {status.xlsx && <p className={`status-line ${status.xlsx.ok ? 'is-ok' : 'is-bad'}`} role="status">{status.xlsx.text}</p>}
         </article>
         <article className="export" {...hoverProps('csv')}>
-          <h3>CSV extract</h3>
-          <p>Any analytical table as a CSV for further analysis.</p>
+          <span className="export__format" style={{ ['--c' as string]: '#D27A8B' }}>CSV</span>
+          <h3>Table extract</h3>
+          <p>Any single analytical table as a formula-safe CSV, for spreadsheets or other tools.</p>
+          <ul>
+            <li>{csvNames.length} tables available, filtered like this page</li>
+            <li>One row per record, raw values (no formatting)</li>
+          </ul>
           <div className="actions">
             <select aria-label="CSV table" value={csv} onChange={(e) => setCsv(Number(e.target.value))}>
               {csvNames.map((n, i) => (
@@ -129,7 +152,7 @@ function ReportsBody() {
                     ['key', 'category', 'kind', 'title', 'observation', 'metric', 'why_it_matters', 'action'],
                     findings.map((f) => [f.key, f.category, f.kind, f.title, f.observation, f.metric, f.why_it_matters, f.action]),
                   ),
-                  `customeriq_findings_${new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '_')}.csv`,
+                  `customeriq_findings_${localStamp()}.csv`,
                 )
               }
             >
@@ -168,7 +191,7 @@ function FindingsList({ list, all }: { list: Insight[]; all: Insight[] }) {
         <li
           key={ins.key}
           className={`insight is-${ins.kind}`}
-          style={hot?.key === ins.key ? { background: 'rgb(244 235 217 / 0.05)' } : undefined}
+          style={hot?.key === ins.key ? { background: 'var(--elev)' } : undefined}
           onMouseEnter={() => setHover('reports', all.indexOf(ins))}
           onMouseLeave={() => setHover('reports', null)}
         >

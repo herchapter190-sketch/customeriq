@@ -12,7 +12,7 @@ import { setFocus, setHover, useDistrict, useFocus, useHover, usePick } from '..
  * kind (orange risk, lime opportunity, ivory information).
  */
 const BASE = -1.15
-const KIND: Record<string, string> = { risk: '#E66B43', opportunity: '#D6FF3F', info: '#F2E6CF' }
+const KIND: Record<string, string> = { risk: '#D18A98', opportunity: '#E6A1AE', info: '#F0CDD4' }
 const X = { pdf: -1.25, xlsx: 0, csv: 1.25 } as const
 type Kind = keyof typeof X
 
@@ -30,11 +30,11 @@ export default function ReportsScene() {
   const cellGeo = useMemo(() => new THREE.BoxGeometry(0.13, 0.05, 0.1), [])
   const stripGeo = useMemo(() => new THREE.BoxGeometry(0.7, 0.05, 0.09), [])
   const orbGeo = useMemo(() => new THREE.SphereGeometry(1, 20, 14), [])
-  const paper = useMemo(() => lacquer('#F2E6CF', { roughness: 0.5, clearcoat: 0.3 }), [])
-  const cellMat = useMemo(() => lacquer('#F2E6CF', { roughness: 0.35 }), [])
+  const paper = useMemo(() => lacquer('#F5E4E8', { roughness: 0.5, clearcoat: 0.3 }), [])
+  const cellMat = useMemo(() => lacquer('#F5E4E8', { roughness: 0.35 }), [])
   const stripMat = useMemo(() => copper(), [])
   const plinthMat = useMemo(() => lacquer('#3a1020', { roughness: 0.25 }), [])
-  const limeMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#D6FF3F', toneMapped: false }), [])
+  const limeMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#E6A1AE', toneMapped: false }), [])
   const orbMats = useMemo(() => Object.fromEntries(Object.entries(KIND).map(([k, c]) => [k, lacquer(c)])), [])
   useDisposable([pageGeo, cellGeo, stripGeo, orbGeo, paper, cellMat, stripMat, plinthMat, limeMat])
   useDisposable(Object.values(orbMats))

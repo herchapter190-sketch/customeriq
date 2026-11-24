@@ -15,8 +15,8 @@ const PITCH_Z = 0.27
 const BASE = -1.15
 const MAX_H = 2.1
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const LOW = new THREE.Color('#3b3a24')
-const HIGH = new THREE.Color('#D6FF3F')
+const LOW = new THREE.Color('#4A1526')
+const HIGH = new THREE.Color('#E6A1AE')
 
 const xOf = (h: number) => (h - 11.5) * PITCH_X
 const zOf = (wd: number) => (wd - 3) * PITCH_Z
@@ -79,7 +79,7 @@ export default function BehaviourScene() {
       m.setMatrixAt(i, tmp.matrix)
       const isHover = hover === `${c.wd}-${c.hour}`
       colour.copy(LOW).lerp(HIGH, Math.pow(c.v / max, 0.8))
-      if (isHover) colour.set('#E66B43')
+      if (isHover) colour.set('#D18A98')
       m.setColorAt(i, colour)
     })
     m.count = grid.length
@@ -126,7 +126,7 @@ export default function BehaviourScene() {
           </Label>
         </group>
       ))}
-      <pointLight ref={light} color="#D6FF3F" distance={3.5} decay={1.6} />
+      <pointLight ref={light} color="#E6A1AE" distance={3.5} decay={1.6} />
       {DAYS.map((d, wd) => (
         <Label key={d} position={[-width / 2 - 0.12, BASE + 0.02, zOf(wd)]} tone="muted" align="right">
           {d}

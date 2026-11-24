@@ -67,9 +67,9 @@ export default function RevenueScene() {
   }, [m])
   useDisposable(ribbon)
   useDisposable(edge)
-  const material = useMemo(() => satin("#5A1730", { sheen: 0.45, metalness: 0.7, roughness: 0.3 }), [])
+  const material = useMemo(() => satin("#641C36", { sheen: 0.45, metalness: 0.7, roughness: 0.3 }), [])
   const edgeMat = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: '#D6FF3F', side: THREE.DoubleSide, toneMapped: false }),
+    () => new THREE.MeshBasicMaterial({ color: '#E6A1AE', side: THREE.DoubleSide, toneMapped: false }),
     [],
   )
   const tickMat = useMemo(() => new THREE.MeshBasicMaterial({ color: '#F4EBD9', transparent: true, opacity: 0.22 }), [])
@@ -174,7 +174,7 @@ export default function RevenueScene() {
       <group ref={marker} visible={false}>
         <mesh ref={markerBar} position={[0, 0, 0]}>
           <boxGeometry args={[0.012, 1, 0.012]} />
-          <meshBasicMaterial color="#E66B43" toneMapped={false} />
+          <meshBasicMaterial color="#D18A98" toneMapped={false} />
         </mesh>
       </group>
       <Label position={at(0)} tone="muted">

@@ -46,7 +46,15 @@ log = logging.getLogger("customeriq.api")
 
 API_VERSION = "1"
 DEFAULT_PORT = 8520
-DEV_ORIGINS = ("http://127.0.0.1:5173", "http://localhost:5173")  # Vite dev server (proxies /api)
+DEFAULT_WEB_PORT = 5173
+
+
+def dev_origins_for(web_port: int) -> tuple[str, ...]:
+    """Browser origins of the local Vite dev server (which proxies /api). Loopback hosts only."""
+    return (f"http://127.0.0.1:{int(web_port)}", f"http://localhost:{int(web_port)}")
+
+
+DEV_ORIGINS = dev_origins_for(DEFAULT_WEB_PORT)
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 CSV_EXPORTS = ("revenue_by_customer", "rfm_customers", "segment_summary", "monthly_revenue",
                "product_performance", "inactive_customers", "cohort_long", "monthly_acquisition")

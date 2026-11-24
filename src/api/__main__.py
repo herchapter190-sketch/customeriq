@@ -13,7 +13,7 @@ import urllib.request
 
 import uvicorn
 
-from .app import DEFAULT_PORT, create_app
+from .app import DEFAULT_PORT, DEFAULT_WEB_PORT, create_app, dev_origins_for
 from .security import resolve_token
 
 
@@ -32,16 +32,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="CustomerIQ local API (127.0.0.1 only)")
     parser.add_argument("command", nargs="?", choices=["serve", "login-link"], default="serve")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT,
+                        help="port of the local Vite dev server allowed to send browser writes (loopback only)")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("port must be between 1024 and 65535")
     if args.port == 8517:
         parser.error("port 8517 is reserved for the Streamlit app")
+    if not 1024 <= args.web_port <= 65535 or args.web_port in (8517, args.port):
+        parser.error("--web-port must be 1024-65535 and differ from the API and Streamlit ports")
     if args.command == "login-link":
         _login_link(args.port)
         return
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    app = create_app(token=resolve_token(), port=args.port)
+    app = create_app(token=resolve_token(), port=args.port, dev_origins=dev_origins_for(args.web_port))
     code = app.state.sessions.mint_login_code()
     print(f"CustomerIQ API on http://127.0.0.1:{args.port}\n"
           f"Single-use browser login link (valid 10 minutes):\n  {_login_url(args.port, code)}")

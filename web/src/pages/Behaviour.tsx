@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { rows, type AnalyticsMap } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
-import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, Section } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, Section, StandardOnly, StdGrid } from '../components/ui'
+import { CategoryChart, Panel, shortMonth } from '../components/charts'
+import { heat, SERIES } from '../lib/palette'
 import { useDataset } from '../lib/dataset'
-import { fmtMoney, fmtMoneyCompact, fmtMonth, fmtPct, fmtWhole } from '../lib/format'
+import { fmtCompact, fmtMoney, fmtMoneyCompact, fmtMonth, fmtPct, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
 import { setDistrict, setHover, useHover, type HourCell } from '../scene/store'
 
@@ -93,10 +95,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
           ]}
         />
       )}
-      <SceneHint>
-        Seven weekdays deep, twenty-four hours wide. Each column's height and brightness is the activity in that hour; the
-        light marks the busiest one. Hover any column to read it.
-      </SceneHint>
+      <SceneHint>Weekdays by hour: taller, brighter columns are busier. Hover a column to read it.</SceneHint>
       <div className="chips" role="group" aria-label="Measure" style={{ marginTop: 18 }}>
         <button type="button" className="chip" aria-pressed={metric === 'orders'} onClick={() => setMetric('orders')}>Orders</button>
         <button type="button" className="chip" aria-pressed={metric === 'sales'} onClick={() => setMetric('sales')}>Gross sales</button>
@@ -107,8 +106,10 @@ function BehaviourBody({ data }: { data: Loaded }) {
         <div className="table-wrap" role="region" aria-label="Orders by weekday and hour" tabIndex={0}>
           <HourTable cells={cells} metric={metric} />
         </div>
+        <p className="heat-scale" aria-hidden="true">Quieter <span className="heat-scale__bar" /> Busier</p>
       </Section>
 
+      <StdGrid>
       <Section title="How many orders customers place">
         <BarList
           max={100}
@@ -117,7 +118,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
             label: f.frequency_band,
             value: f.customer_share_pct,
             display: fmtPct(f.customer_share_pct),
-            color: '#D6FF3F',
+            color: SERIES[0],
             note: `${fmtWhole(f.customers)} customers · ${fmtPct(f.revenue_share_pct)} of revenue`,
           }))}
         />
@@ -125,7 +126,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
 
       <Section title="Days between consecutive orders">
         <BarList
-          items={gaps.map((g) => ({ key: g.label, label: g.label, value: g.count, display: fmtWhole(g.count), color: '#E66B43' }))}
+          items={gaps.map((g) => ({ key: g.label, label: g.label, value: g.count, display: fmtWhole(g.count), color: SERIES[1] }))}
           caption="Repeat orders by the gap since the same customer's previous order."
         />
         <p className="muted small">{fmtWhole(rows(data.interpurchase_gaps).length)} repeat orders in the period.</p>
@@ -154,11 +155,31 @@ function BehaviourBody({ data }: { data: Loaded }) {
             label: b.value_band,
             value: b.order_share_pct,
             display: fmtPct(b.order_share_pct),
-            color: '#F2E6CF',
+            color: SERIES[3],
             note: `${fmtWhole(b.orders)} orders · ${b.avg_units_per_order.toFixed(1)} units per order`,
           }))}
         />
       </Section>
+
+      {repeat && once && (
+        <StandardOnly>
+          <Panel title="Repeat vs one-time customers" note="Share of customers compared with share of revenue for each group.">
+            <CategoryChart
+              caption="Share of customers and share of revenue, repeat vs one-time"
+              categories={['Share of customers', 'Share of revenue']}
+              series={[
+                { key: 'rep', label: 'Repeat', color: SERIES[0], type: 'bar' },
+                { key: 'one', label: 'One-time', color: SERIES[1], type: 'bar' },
+              ]}
+              values={{ rep: [repeat.customer_share_pct, repeat.revenue_share_pct], one: [once.customer_share_pct, once.revenue_share_pct] }}
+              format={(v) => fmtPct(v)}
+              axisFormat={(v) => `${Math.round(v)}%`}
+              height={240}
+            />
+          </Panel>
+        </StandardOnly>
+      )}
+      </StdGrid>
 
       <Section title="Repeat vs one-time customers" aside={<CsvButton rows={rep} name="customeriq_repeat_vs_one_time.csv" />}>
         <DataTable
@@ -180,6 +201,21 @@ function BehaviourBody({ data }: { data: Loaded }) {
       </Section>
 
       <Section title="Monthly customer acquisition" aside={<CsvButton rows={acq} name="customeriq_monthly_acquisition.csv" />}>
+        <StandardOnly>
+          <CategoryChart
+            caption="New and returning customers by month"
+            categories={acq.map((m) => shortMonth(m.month))}
+            titles={acq.map((m) => fmtMonth(m.month))}
+            series={[
+              { key: 'ret', label: 'Returning customers', color: SERIES[0], type: 'bar', stack: 'c' },
+              { key: 'new', label: 'New customers', color: SERIES[1], type: 'bar', stack: 'c' },
+            ]}
+            values={{ ret: acq.map((m) => m.returning_customers), new: acq.map((m) => m.new_customers) }}
+            format={(v) => fmtWhole(v)}
+            axisFormat={fmtCompact}
+            height={260}
+          />
+        </StandardOnly>
         <DataTable
           caption="New and returning customers by month"
           rows={acq}
@@ -239,9 +275,9 @@ function HourTable({ cells, metric }: { cells: HourCell[]; metric: 'orders' | 's
             <th scope="row">{name}</th>
             {hours.map((h) => {
               const c = by.get(`${wd}-${h}`)
-              const a = c ? 0.06 + 0.8 * (val(c) / max) : 0
+              const hc = c ? heat(val(c) / max) : null
               return (
-                <td key={h} style={{ background: `rgb(214 255 63 / ${a})`, color: a > 0.5 ? '#27231F' : undefined }}>
+                <td key={h} style={hc ? { background: hc.bg, color: hc.fg } : undefined} title={`${name} ${String(h).padStart(2, '0')}:00 · ${c ? `${fmtWhole(c.orders)} orders, ${fmtMoney(c.sales)} gross sales` : 'no orders'}`}>
                   {c ? (metric === 'orders' ? val(c) : fmtMoneyCompact(val(c))) : ''}
                 </td>
               )

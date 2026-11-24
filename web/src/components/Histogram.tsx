@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { fmtWhole } from '../lib/format'
+import { useWidth } from './charts'
 
 /**
  * Stacked histogram in SVG. Binning is display-only (Streamlit's Plotly histograms bin in the
@@ -21,6 +22,7 @@ export function Histogram({
   /** values above this go into the last bin, labelled "+" */
   clip?: number
 }) {
+  const [ref, measured] = useWidth<HTMLDivElement>()
   const bins = useMemo(() => {
     if (!values.length) return []
     const top = clip ?? Math.max(...values.map((v) => v.x))
@@ -35,16 +37,17 @@ export function Histogram({
   }, [values, bin, clip])
   if (!bins.length) return <p className="muted">No values to show.</p>
   const max = Math.max(1, ...bins.map((b) => b.total))
-  const W = 720
+  const W = measured || 720
   const H = 220
   const pad = { l: 44, r: 8, t: 10, b: 34 }
   const bw = (W - pad.l - pad.r) / bins.length
   const y = (v: number) => pad.t + (H - pad.t - pad.b) * (1 - v / max)
   const ticks = [0, Math.round(max / 2), max]
-  const labelEvery = Math.ceil(bins.length / 8)
+  const labelEvery = Math.max(1, Math.ceil(bins.length / Math.max(4, Math.floor(W / 70))))
   return (
     <figure className="hist">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${yLabel} by ${xLabel}`} preserveAspectRatio="none">
+      <div ref={ref}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${yLabel} by ${xLabel}`}>
         {ticks.map((t) => (
           <g key={t}>
             <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} className="hist__grid" />
@@ -72,6 +75,7 @@ export function Histogram({
         })}
         <text x={(W + pad.l) / 2} y={H - 4} className="hist__axis" textAnchor="middle">{xLabel}</text>
       </svg>
+      </div>
       <figcaption className="hist__legend">
         {groups.map((g) => (
           <span key={g.key}><span className="seg-dot" style={{ background: g.color }} aria-hidden="true" /> {g.key}</span>

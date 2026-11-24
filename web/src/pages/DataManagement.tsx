@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom'
 import { api, ApiError, saveBlob, type CleaningOptions } from '../api/client'
 import { rows, type CleaningSummary, type ImportPreview, type ImportResult } from '../api/types'
 import { ErrorPanel, Loading, SessionGate } from '../components/Status'
-import { BarList, DatasetGate, DataTable, Figures, PageHead, SceneHint, Section, TabPanel, Tabs } from '../components/ui'
+import { BarList, DatasetGate, DataTable, Figures, PageHead, SceneHint, Section, TabPanel, Tabs, ThreeDOnly } from '../components/ui'
+import { SERIES } from '../lib/palette'
 import { toCsv } from '../lib/csv'
 import { useDataset } from '../lib/dataset'
 import { REJECTION_REASONS } from '../lib/domain'
 import { fmtDate, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
+import { useIsStandard } from '../lib/viewMode'
 import { setDistrict, type DataStage } from '../scene/store'
 
 const TABS = [
@@ -31,6 +33,17 @@ const TEMPLATE = {
 
 const STEPS = ['Upload', 'Map columns', 'Validate', 'Clean', 'Import'] as const
 const STEP_OF: Record<DataStage, number> = { empty: -1, loaded: 5, uploaded: 0, mapping: 1, validated: 3, importing: 4, imported: 5, failed: 4 }
+/** Plain-language guidance for where the reader is in the import workflow. */
+const STAGE_HELP: Record<DataStage, string> = {
+  empty: 'No dataset is loaded. Start by uploading a transaction file in “Import your data”, or load the synthetic demo.',
+  loaded: 'A dataset is loaded. To replace it, upload a new file: you will map its columns, review validation, then confirm the import.',
+  uploaded: 'Step 1 — reading your file. Large files can take a few seconds.',
+  mapping: 'Step 2 — check that each standard field points at the right column. Required fields are marked *. The validation below shows how the rows would be cleaned.',
+  validated: 'Step 3–4 — validation and cleaning reviewed. Confirm the replacement in step 4 to import.',
+  importing: 'Step 5 — importing. A verified backup of the current dataset is taken first.',
+  imported: 'Import complete. Every view now reads the new dataset.',
+  failed: 'The import did not complete. The current dataset was not changed; see the message below.',
+}
 
 const countsOf = (s?: CleaningSummary) =>
   s ? { valid: s.sales_rows, returns: s.return_rows, rejected: s.rejected_rows, total: s.input_rows } : { valid: 0, returns: 0, rejected: 0, total: 0 }
@@ -103,10 +116,8 @@ function DataBody() {
           )
         })}
       </ol>
-      <SceneHint>
-        The cubes are your rows in proportion: ivory for valid sales lines, copper for returns, orange for rows the cleaning
-        rules reject. They gather by column while you map, then assemble into the dataset when it is imported.
-      </SceneHint>
+      <p className="muted small" role="status" style={{ marginTop: 10 }}>{STAGE_HELP[stage]}</p>
+      <SceneHint>Cubes are your rows in proportion: ivory valid, wine returns, rose rejected.</SceneHint>
       <Tabs tabs={TABS} value={tab} onChange={setTab} label="Data management" />
       {tab === 'import' && (
         <ImportTab
@@ -315,7 +326,7 @@ function ImportTab(props: {
             </p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => props.setStage('validated')} disabled={stage === 'validated'}>
-                Show the validation in the scene
+                <ThreeDOnlyText scene="Show the validation in the scene" std="Mark validation as reviewed" />
               </button>
             </div>
           </Section>
@@ -360,14 +371,14 @@ function Rejections({ counts }: { counts: Record<string, number> }) {
     <div style={{ marginTop: 20 }}>
       <BarList
         caption="Rows excluded by rule"
-        items={items.map(([k, v]) => ({ key: k, label: REJECTION_REASONS[k] ?? k, value: v, display: fmtWhole(v), color: '#E66B43' }))}
+        items={items.map(([k, v]) => ({ key: k, label: REJECTION_REASONS[k] ?? k, value: v, display: fmtWhole(v), color: SERIES[1] }))}
       />
     </div>
   )
 }
 
 function CurrentTab() {
-  const { dataset, refresh } = useDataset()
+  const { dataset, refresh, refreshing } = useDataset()
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
@@ -377,9 +388,19 @@ function CurrentTab() {
     [rejected],
   )
   if (!dataset) return null
+  // Right after an import, demo load or clear the context still holds the previous dataset for a moment;
+  // never show it (or offer to clear it) as if it were the one loaded now.
+  if (refreshing) {
+    return (
+      <TabPanel id="current">
+        <Loading label="Reading the updated dataset" />
+      </TabPanel>
+    )
+  }
   if (!dataset.has_data) {
     return (
       <TabPanel id="current">
+        {msg && <p className="status-line" role="status">{msg}</p>}
         <p className="lede">No dataset is loaded. Import a file or load the demo data.</p>
       </TabPanel>
     )
@@ -402,7 +423,10 @@ function CurrentTab() {
   return (
     <TabPanel id="current">
       {meta.is_synthetic && (
-        <p className="status-line">{meta.data_label ?? 'Synthetic demo data'}: generated for demonstration, not real customers.</p>
+        <p className="status-line">
+          {meta.data_label ?? 'Synthetic demo data'}
+          {/not real/i.test(meta.data_label ?? '') ? '.' : ': generated for demonstration, not real customers.'}
+        </p>
       )}
       <Figures
         items={[
@@ -518,5 +542,14 @@ function DemoTab({ onLoaded }: { onLoaded: () => void }) {
       </div>
       {msg && <p className="status-line is-bad" role="alert">{msg}</p>}
     </TabPanel>
+  )
+}
+
+function ThreeDOnlyText(props: { scene: string; std: string }) {
+  return (
+    <>
+      <ThreeDOnly>{props.scene}</ThreeDOnly>
+      {useIsStandard() && props.std}
+    </>
   )
 }

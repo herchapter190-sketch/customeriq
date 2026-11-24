@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import gsap from 'gsap'
 import * as THREE from 'three'
@@ -10,19 +10,25 @@ interface Pose {
   dim: number
 }
 
-/** Overview framing is unchanged from Stage 3A; every other route flies to its district. */
+/**
+ * Every route flies to its district. On wide screens the subject is framed on its own axis and the
+ * projection is shifted (see the view offset below) so it sits centred in the space beside the text column.
+ */
 function poseFor(slug: string, wide: boolean, zoom: number): Pose {
   if (slug === 'overview') {
     return wide
-      ? { pos: [-1.45, 0.12, 5.3], target: [-1.45, 0.02, 0], dim: 1 }
+      ? { pos: [0, 0.12, 6.4 * zoom], target: [0, 0.02, 0], dim: 1 }
       : { pos: [0, -1.05, 6.9], target: [0, -1.05, 0], dim: 0.9 }
   }
-  const district = worldPose(slug, wide, wide ? 1 : zoom)
+  const district = worldPose(slug, wide, zoom)
   if (district) return { ...district, dim: 0.3 }
   return wide
     ? { pos: [-3.4, 1.9, 10.5], target: [-2.6, 0.1, 0], dim: 0.42 }
     : { pos: [0, 2.4, 11.5], target: [0, -1.6, 0], dim: 0.38 }
 }
+
+/** Free-area height ÷ width at the 1440×900 reference the district framings were tuned for. */
+const FREE_RATIO = 900 / 650
 
 const INTRO: Pose = { pos: [0.6, 1.8, 13], target: [0, 0, 0], dim: 0 }
 
@@ -45,8 +51,18 @@ export function CameraRig({ slug, reduced, dim }: { slug: string; reduced: boole
   const lookAt = useRef(new THREE.Vector3())
 
   const wide = width >= 960 && width / Math.max(1, height) > 1.05
-  // Quantised so a resize only re-frames when the shape really changes.
-  const zoom = Math.round(portraitZoom(width / Math.max(1, height)) * 10) / 10
+  // Right edge of the HTML text column on wide screens; the scene is centred in the space after it.
+  const [column, setColumn] = useState(0)
+  useEffect(() => {
+    const page = wide ? document.querySelector('main.page') : null
+    setColumn(page ? Math.min(width * 0.6, Math.round(page.getBoundingClientRect().right)) : 0)
+  }, [wide, width, height])
+  const free = width - column
+  // Wide: pull back when the free area is narrower (relative to its height) than at 1440×900.
+  // Narrow: pull back on portrait screens. Quantised so a resize only re-frames on a real change.
+  const zoom = wide
+    ? Math.round(Math.min(1.8, Math.max(0.9, height / Math.max(1, free) / FREE_RATIO)) * 10) / 10
+    : Math.round(portraitZoom(width / Math.max(1, height)) * 10) / 10
 
   useEffect(() => {
     const pose = poseFor(slug, wide, zoom)
@@ -109,8 +125,12 @@ export function CameraRig({ slug, reduced, dim }: { slug: string; reduced: boole
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera
     cam.fov = width < 640 ? 42 : 35
+    // Shift the projection right by half the column so the frame's centre is the free area's centre.
+    if (column > 0) cam.setViewOffset(width, height, -column / 2, 0, width, height)
+    else cam.clearViewOffset()
     cam.updateProjectionMatrix()
-  }, [camera, width])
+    invalidate()
+  }, [camera, width, height, column, invalidate])
 
   return null
 }

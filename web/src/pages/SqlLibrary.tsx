@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, saveBlob } from '../api/client'
 import { rows, type SqlResult } from '../api/types'
 import { ErrorPanel, Loading, SessionGate } from '../components/Status'
-import { DatasetGate, DataTable, FilterBar, PageHead, SceneHint, Section } from '../components/ui'
+import { DatasetGate, DataTable, FilterBar, PageHead, SceneHint, SearchBox, Section } from '../components/ui'
 import { toCsv } from '../lib/csv'
 import { useDataset } from '../lib/dataset'
 import { SQL_DOCS, SQL_FAMILY_COLORS, type SqlFamily } from '../lib/domain'
@@ -61,6 +61,15 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
   const focus = useFocus('sql') as string | null
   const { filters, key } = useDataset()
   const [customer, setCustomer] = useState('')
+  const [query, setQuery] = useState('')
+  const [fams, setFams] = useState<SqlFamily[]>([])
+  const needle = query.trim().toLowerCase()
+  const matches = (name: string) => {
+    const d = SQL_DOCS[name]
+    if (fams.length && !fams.includes(d?.family ?? 'Dataset')) return false
+    return !needle || [name, d?.purpose, d?.techniques].some((t) => (t ?? '').toLowerCase().includes(needle))
+  }
+  const visible = queries.filter((x) => matches(x.name))
   const [run, setRun] = useState<{ name: string; key: string; result?: SqlResult; error?: unknown; busy: boolean } | null>(null)
   const q = queries.find((x) => x.name === focus) ?? queries[0]
   const doc = SQL_DOCS[q.name]
@@ -87,19 +96,35 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
       <SceneHint>Each slab is one query file, edged by family. Select one here or in the scene; running it lays one line of light per returned row.</SceneHint>
       <div className="sql-columns">
         <nav aria-label="Query library">
+          <SearchBox label="Search queries" value={query} onChange={setQuery} placeholder="Name, purpose or technique" />
+          <div className="chips" role="group" aria-label="Query categories" style={{ marginTop: 12 }}>
+            {FAMILIES.map((fam) => (
+              <button
+                key={fam}
+                type="button"
+                className="chip chip--small"
+                aria-pressed={fams.includes(fam)}
+                onClick={() => setFams(fams.includes(fam) ? fams.filter((f) => f !== fam) : [...fams, fam])}
+              >
+                {fam}
+              </button>
+            ))}
+          </div>
           {FAMILIES.map((fam) => {
-            const items = queries.filter((x) => (SQL_DOCS[x.name]?.family ?? 'Dataset') === fam)
+            const items = visible.filter((x) => (SQL_DOCS[x.name]?.family ?? 'Dataset') === fam)
             if (!items.length) return null
             return (
               <div key={fam}>
                 <p className="sql-index__fam">
                   <span className="seg-dot" style={{ background: SQL_FAMILY_COLORS[fam] }} aria-hidden="true" /> {fam}
+                  <small>{items.length}</small>
                 </p>
                 <ul className="sql-index">
                   {items.map((x) => (
                     <li key={x.name}>
                       <button type="button" aria-current={x.name === q.name} onClick={() => setFocus('sql', x.name)}>
                         {x.name}
+                        {SQL_DOCS[x.name] && <small>{SQL_DOCS[x.name].purpose}</small>}
                       </button>
                     </li>
                   ))}
@@ -107,11 +132,17 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
               </div>
             )
           })}
-          <p className="muted small" style={{ marginTop: 14 }}>{queries.length} queries</p>
+          {!visible.length && <p className="muted small" style={{ marginTop: 14 }}>No query matches this search.</p>}
+          <p className="muted small" style={{ marginTop: 14 }}>
+            {visible.length === queries.length ? `${queries.length} queries` : `${visible.length} of ${queries.length} queries`} · fixed, read-only files; free-form SQL is not accepted.
+          </p>
         </nav>
 
         <div>
-          <h2 className="profile__title" style={{ fontFamily: 'var(--mono)', fontSize: '1.25rem' }}>{q.name}</h2>
+          <p className="tag">
+            <span className="seg-dot" style={{ background: SQL_FAMILY_COLORS[doc?.family ?? 'Dataset'] }} aria-hidden="true" /> {doc?.family ?? 'Dataset'}
+          </p>
+          <h2 className="profile__title" style={{ fontSize: '1.25rem', marginTop: 10 }}>{q.name}</h2>
           <dl className="doc-list">
             <dt>Purpose</dt>
             <dd>{doc?.purpose ?? 'Documented in the query file header.'}</dd>

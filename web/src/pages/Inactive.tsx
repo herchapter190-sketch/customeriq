@@ -4,12 +4,14 @@ import { rows, type AnalyticsMap, type RiskRules } from '../api/types'
 import type { Column } from '../components/ui'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
 import { RiskEditor } from '../components/RuleEditors'
-import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, PageHead, Pills, SceneHint, SearchBox, searchRows, Section } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, PageHead, Pills, SceneHint, SearchBox, searchRows, Section, StandardOnly, StdGrid } from '../components/ui'
+import { Panel, StackRows } from '../components/charts'
 import { Histogram } from '../components/Histogram'
 import { useDataset } from '../lib/dataset'
 import { RISK_COLORS, RISK_ZONES, segmentColor } from '../lib/domain'
 import { fmtDate, fmtMoney, fmtMoneyCompact, fmtPct, fmtWhole } from '../lib/format'
 import { useAsync } from '../lib/hooks'
+import { useIsStandard } from '../lib/viewMode'
 import { setDistrict, setFocus, setHover, setPick, useDistrict, useFocus, useHover, usePick, useScene } from '../scene/store'
 import { CustomerOrders } from './shared'
 
@@ -114,13 +116,27 @@ function InactiveBody({ data, customers, rules }: { data: Loaded; customers: Ina
   ]
   const select = (r: InactiveRow) => (setPick('inactive', String(r.customer_id)), setFocus('inactive', r.risk_category))
 
+  const zones = RISK_ZONES.map((z) => summary.find((s) => s.risk_category === z)).filter((z): z is NonNullable<typeof z> => !!z)
+  const segNames = [...new Set(bySeg.map((r) => r.segment))]
   return (
     <>
-      <SceneHint>
-        Distance from the centre is days since the last purchase; the rings are the inactivity zones. Sphere size is lifetime
-        revenue, brightness the value tier (lime high, ivory medium, taupe low); an orange ring marks customers overdue against
-        their own buying rhythm. Each sector is a segment. Click a customer to open them.
-      </SceneHint>
+      <StandardOnly>
+        <dl className="ledger">
+          {zones.map((z) => (
+            <div className="ledger__item" key={z.risk_category}>
+              <dt>
+                <span className="seg-dot" style={{ background: RISK_COLORS[z.risk_category], marginRight: 7 }} aria-hidden="true" />
+                {z.risk_category}
+              </dt>
+              <dd className="ledger__value">{fmtWhole(z.customers)}</dd>
+              <dd className="ledger__delta">
+                {fmtPct(z.customer_share_pct)} of customers · {fmtMoneyCompact(z.historical_revenue)} lifetime revenue
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </StandardOnly>
+      <SceneHint>Distance from the centre is days since the last order; rings are the zones. Brighter spheres are higher value, a rose ring marks overdue. Click to open a customer.</SceneHint>
       <HoverReadout />
       <RiskEditor />
       <p className="muted small">
@@ -128,6 +144,7 @@ function InactiveBody({ data, customers, rules }: { data: Loaded; customers: Ina
         Lapsed beyond. Overdue = a repeat customer inactive for more than {rules.overdue_multiplier}× their usual gap.
       </p>
 
+      <StdGrid>
       <Section title="Zones" aside={focus && <button type="button" className="linkish" onClick={() => (setFocus('inactive', null), setPick('inactive', null))}>Show all</button>}>
         <BarList
           max={100}
@@ -143,6 +160,22 @@ function InactiveBody({ data, customers, rules }: { data: Loaded; customers: Ina
           }))}
         />
       </Section>
+
+      <StandardOnly>
+        <Panel title="Risk by segment" note="Customers in each segment, split by inactivity zone. Hover a bar part for its count.">
+          <StackRows
+            caption="Customers by segment and inactivity zone"
+            parts={RISK_ZONES.map((z) => ({ key: z, label: z, color: RISK_COLORS[z] }))}
+            format={(v) => fmtWhole(v)}
+            rows={segNames.map((seg) => ({
+              key: seg,
+              label: seg,
+              values: Object.fromEntries(bySeg.filter((r) => r.segment === seg).map((r) => [r.risk_category, r.customers])),
+            }))}
+          />
+        </Panel>
+      </StandardOnly>
+      </StdGrid>
 
       <Section title="Priority win-back list">
         <p className="muted small">High-value customers who are At Risk or Lapsed, or overdue against their own rhythm, by lifetime revenue.</p>
@@ -188,7 +221,8 @@ function HoverReadout() {
   const data = useDistrict('inactive')
   const hover = useHover('inactive')
   const mode = useScene((s) => s.mode)
-  if (mode === '2d') return null
+  const standard = useIsStandard()
+  if (mode === '2d' || standard) return null
   const c = typeof hover === 'number' ? data?.customers[hover] : undefined
   return (
     <aside className="readout" aria-live="polite">

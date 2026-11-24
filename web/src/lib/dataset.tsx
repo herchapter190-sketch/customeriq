@@ -47,6 +47,8 @@ interface DatasetValue {
   error: unknown
   /** Re-read dataset + meta (after an import, demo load or clear, or "Refresh data"). */
   refresh: () => void
+  /** True while dataset + meta are being re-read; the shown dataset may be the previous one. */
+  refreshing: boolean
   preset: Preset
   setPreset: (p: Preset) => void
   /** Custom window (ISO dates) — setting it switches the preset to "Custom", as in Streamlit. */
@@ -83,6 +85,7 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<ApiMeta | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [nonce, setNonce] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
   const [preset, setPresetState] = useState<Preset>('All data')
   const [custom, setCustom] = useState<[string, string] | null>(null)
   const [segments, setSegments] = useState<string[]>([])
@@ -94,6 +97,7 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'ready') return
     const c = new AbortController()
+    setRefreshing(true)
     Promise.all([api.dataset(c.signal), api.meta(c.signal)])
       .then(([d, m]) => {
         setDataset(d)
@@ -101,10 +105,11 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
         setError(null)
       })
       .catch((e: unknown) => !c.signal.aborted && setError(e))
+      .finally(() => !c.signal.aborted && setRefreshing(false))
     return () => c.abort()
   }, [status, nonce])
 
-  const refresh = useCallback(() => setNonce((n) => n + 1), [])
+  const refresh = useCallback(() => (setRefreshing(true), setNonce((n) => n + 1)), [])
   const [lo, hi] = dataset?.bounds ?? [null, null]
 
   // A new dataset (different bounds) drops a custom window, like Streamlit's `_bounds` reset.
@@ -161,13 +166,13 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
   const key = `${dataset?.version ?? '-'}|${nonce}|${JSON.stringify(filters)}`
   const value = useMemo<DatasetValue>(
     () => ({
-      dataset, meta, error, refresh, preset, setPreset, setRange, segments, setSegments, currency, setCurrency,
+      dataset, meta, error, refresh, refreshing, preset, setPreset, setRange, segments, setSegments, currency, setCurrency,
       rfm, setRfm, risk, setRisk, rules, motion, setMotion, resetFilters, resetAll, filters,
       window: window_, key,
     }),
     // window_ derives from filters + bounds, both covered by key
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dataset, meta, error, refresh, preset, setPreset, setRange, segments, currency, rfm, risk, rules, motion, setMotion,
+    [dataset, meta, error, refresh, refreshing, preset, setPreset, setRange, segments, currency, rfm, risk, rules, motion, setMotion,
       resetFilters, resetAll, filters, key, lo, hi],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
