@@ -4,15 +4,16 @@ Thank you for your interest in improving CustomerIQ.
 
 ## Development setup
 
+Follow [Installation and How to run in the README](README.md#installation). The main interface is the React web app served by `python -m src.api`. The Streamlit app (`python -m streamlit run app.py --server.port 8517`) is a fallback.
+
+Before opening a pull request, run:
+
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m pytest
-python -m streamlit run app.py --server.port 8517
+.\.venv\Scripts\python.exe -m pytest
+cd web; npm run typecheck
 ```
 
-The local database (`data/customeriq.db`) is created on first run and is git-ignored. Delete it to start fresh with the synthetic demo dataset.
+The local database (`data/customeriq.db`) is created on first run and is git-ignored. To start fresh, delete it, then load the synthetic demo dataset from **Data Management** in the web app (the Streamlit fallback loads it automatically on first launch).
 
 ## Guidelines
 
@@ -22,11 +23,11 @@ The local database (`data/customeriq.db`) is created on first run and is git-ign
 - **Test against hand-calculated values.** Extend the known dataset in `tests/conftest.py`, or add a small fixture whose expected results you have worked out independently.
 - **Insights must be data-backed.** A new rule in `src/insights/engine.py` needs a minimum-sample guard. It must return `None` rather than guess, and it must fill all four parts: observation, metric, why it matters, action.
 - **Label synthetic data.** Anything derived from the demo generator must stay clearly marked as synthetic.
-- Use type hints and keep functions small. UI code stays in `src/ui/`.
+- Use type hints and keep functions small. Web app code stays in `web/src/` and Streamlit fallback code in `src/ui/`. Both get their numbers from `src/services/registry.py`.
 
 ## Pull requests
 
 1. Create a feature branch.
-2. Add or update tests, and make sure `python -m pytest` passes.
+2. Add or update tests, and make sure `python -m pytest` and `npm run typecheck` (in `web/`) pass.
 3. Update the relevant documentation (README, SQL guide, methodology) when behaviour changes.
 4. Describe *what* changed and *why* in the PR description.
