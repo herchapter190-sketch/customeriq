@@ -28,7 +28,7 @@ services:
         value: build/customeriq-demo.db
       # Must equal the public hostname Render assigns (it adds a suffix if the name is taken).
       - key: CUSTOMERIQ_ALLOWED_HOSTS
-        value: customeriq-demo.onrender.com
+        value: customeriq-demo-1r3k.onrender.com
       # Render's proxies sit in 10.0.0.0/8; never "*" (the server refuses it).
       - key: CUSTOMERIQ_FORWARDED_ALLOW_IPS
         value: 10.0.0.0/8

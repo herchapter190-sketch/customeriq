@@ -174,7 +174,8 @@ def test_demo_refuses_missing_db_and_wildcard_hosts(tmp_path, db_path):
 
 
 def test_demo_launcher_requires_explicit_env(monkeypatch, packaged):
-    for name in ("CUSTOMERIQ_MODE", "CUSTOMERIQ_DEMO_DB", "CUSTOMERIQ_ALLOWED_HOSTS", "CUSTOMERIQ_ALLOWED_ORIGINS"):
+    for name in ("CUSTOMERIQ_MODE", "CUSTOMERIQ_DEMO_DB", "CUSTOMERIQ_ALLOWED_HOSTS", "CUSTOMERIQ_ALLOWED_ORIGINS",
+                 "RENDER_EXTERNAL_HOSTNAME"):
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError, match="CUSTOMERIQ_MODE"):
         demo_launcher.build_app()
@@ -186,6 +187,16 @@ def test_demo_launcher_requires_explicit_env(monkeypatch, packaged):
     app = demo_launcher.build_app()
     assert app.state.mode == "demo"
     assert app.state.allowed_origins == {ORIGIN, "https://other.example.com"}
+
+
+def test_demo_launcher_accepts_render_assigned_host(monkeypatch, packaged):
+    # Render may add a suffix to the hostname; its health checks use that host, so it must pass.
+    _demo_env(monkeypatch, packaged)
+    monkeypatch.setenv("RENDER_EXTERNAL_HOSTNAME", "customeriq-demo-1r3k.onrender.com")
+    with TestClient(demo_launcher.build_app()) as c:
+        assert c.get("/api/health", headers={"Host": "customeriq-demo-1r3k.onrender.com"}).status_code == 200
+        assert c.get("/api/health", headers={"Host": HOST}).status_code == 200
+        assert c.get("/api/health", headers={"Host": "evil.example.com"}).status_code == 400
 
 
 def test_local_mode_unchanged(db_path, tmp_path, monkeypatch):

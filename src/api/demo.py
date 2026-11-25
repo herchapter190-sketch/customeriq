@@ -7,6 +7,7 @@ Binds 0.0.0.0:$PORT as hosting platforms such as Render expect. Configuration is
   CUSTOMERIQ_DEMO_DB          packaged demo database built by scripts/build_demo_db.py (never the local
                               data/customeriq.db); it is verified, then copied to a temp dir and the copy is served
   CUSTOMERIQ_ALLOWED_HOSTS    comma-separated public host names, e.g. customeriq-demo.onrender.com
+                              (RENDER_EXTERNAL_HOSTNAME, set by Render, is added automatically)
   CUSTOMERIQ_ALLOWED_ORIGINS  optional comma-separated origins; default https://<each allowed host>
   PORT                        listen port (default 10000)
   CUSTOMERIQ_RATE_LIMIT       optional requests per minute per client IP (default 600: behind a CDN, one
@@ -101,7 +102,8 @@ def build_app():
     if os.environ.get("CUSTOMERIQ_MODE", "").strip().lower() != "demo":
         raise ValueError("Set CUSTOMERIQ_MODE=demo to run the public demo server")
     db = os.environ.get("CUSTOMERIQ_DEMO_DB", "").strip()
-    hosts = _list("CUSTOMERIQ_ALLOWED_HOSTS")
+    # Render sets RENDER_EXTERNAL_HOSTNAME to the service's own assigned host (it may carry a random suffix).
+    hosts = tuple(dict.fromkeys(_list("CUSTOMERIQ_ALLOWED_HOSTS") + _list("RENDER_EXTERNAL_HOSTNAME")))
     if not db or not hosts:
         raise ValueError("CUSTOMERIQ_DEMO_DB and CUSTOMERIQ_ALLOWED_HOSTS are required in demo mode")
     origins = _list("CUSTOMERIQ_ALLOWED_ORIGINS") or tuple(f"https://{h}" for h in hosts)
