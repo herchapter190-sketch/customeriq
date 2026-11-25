@@ -134,8 +134,9 @@ def _read_csv_bytes(data: bytes) -> pd.DataFrame:
             continue
         first_line = text.split("\n", 1)[0]
         sep = max((",", ";", "\t", "|"), key=first_line.count)
+        # index_col=False: a trailing delimiter on every row must not turn the first column into the index.
         return pd.read_csv(io.StringIO(text), sep=sep, dtype=str, keep_default_na=False,
-                           na_values=[""], skipinitialspace=True)
+                           na_values=[""], skipinitialspace=True, index_col=False)
     raise ValueError(f"Could not decode file: {last_error}")
 
 

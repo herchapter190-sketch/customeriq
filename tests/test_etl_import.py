@@ -29,6 +29,13 @@ def test_read_csv_semicolon_and_bom():
     assert len(df) == 1
 
 
+def test_read_csv_trailing_delimiter_keeps_columns_aligned():
+    # Every row ends with a delimiter the header lacks; pandas would otherwise index on Invoice and shift values left.
+    df = read_table(b"Invoice,Customer,Date,Qty,Price\n1,A,2024-01-01,2,3.5,\n2,B,2024-01-02,1,4,\n", "export.csv")
+    assert list(df.columns) == ["Invoice", "Customer", "Date", "Qty", "Price"]
+    assert df.to_dict("records")[1] == {"Invoice": "2", "Customer": "B", "Date": "2024-01-02", "Qty": "1", "Price": "4"}
+
+
 def test_read_csv_latin1_fallback():
     data = "Invoice,Customer,Date,Qty,Price,Name\n1,A,2024-01-01,1,2,Caf\xe9 mug\n".encode("latin-1")
     df = read_table(data, "legacy.csv")

@@ -10,7 +10,7 @@ import { useIsStandard } from '../lib/viewMode'
 import { useDataset } from '../lib/dataset'
 import { segmentColor } from '../lib/domain'
 import { currencyCaption, fmtCompact, fmtDate, fmtDelta, fmtMoney, fmtMoneyCompact, fmtMonth, fmtPct, fmtWhole } from '../lib/format'
-import { useAsync } from '../lib/hooks'
+import { useAsync, type AsyncState } from '../lib/hooks'
 import { sceneStore, useScene } from '../scene/store'
 
 const NAMES = ['kpi_comparison', 'monthly_revenue', 'segment_summary', 'monthly_acquisition'] as const
@@ -77,7 +77,7 @@ export default function Overview() {
 function OverviewData() {
   const { filters, key, currency } = useDataset()
   const [result, reload] = useAsync((signal) => api.batch(NAMES, filters, signal), [key])
-  const [insights] = useAsync((signal) => api.analytics('insights', filters, signal, currency ? { currency } : {}), [key, currency])
+  const [insights, retryInsights] = useAsync((signal) => api.analytics('insights', filters, signal, currency ? { currency } : {}), [key, currency])
 
   useEffect(() => {
     if (result.state !== 'done') return
@@ -91,10 +91,10 @@ function OverviewData() {
 
   if (result.state === 'loading') return <Loading />
   if (result.state === 'error') return <ErrorPanel error={result.error} onRetry={reload} />
-  return <OverviewBody data={result.data} insights={insights.state === 'done' ? insights.data : null} />
+  return <OverviewBody data={result.data} insights={insights} retryInsights={retryInsights} />
 }
 
-function OverviewBody({ data, insights }: { data: Loaded; insights: Insight[] | null }) {
+function OverviewBody({ data, insights, retryInsights }: { data: Loaded; insights: AsyncState<Insight[]>; retryInsights: () => void }) {
   const comp = new Map(rows<CompRow>(data.kpi_comparison.table).map((r) => [r.metric, r]))
   const hasPrev = data.kpi_comparison.previous_has_data
   const [p0, p1] = (data.kpi_comparison.previous_period as [string, string] | null) ?? [null, null]
@@ -217,7 +217,7 @@ function OverviewBody({ data, insights }: { data: Loaded; insights: Insight[] | 
         </Details>
       </StandardOnly>
 
-      <Insights insights={insights} />
+      <Insights result={insights} onRetry={retryInsights} />
 
       <ThreeDOnly>
         {seg.length > 0 && (
@@ -259,8 +259,18 @@ function OverviewBody({ data, insights }: { data: Loaded; insights: Insight[] | 
   )
 }
 
-function Insights({ insights }: { insights: Insight[] | null }) {
+function Insights({ result, onRetry }: { result: AsyncState<Insight[]>; onRetry: () => void }) {
   const standard = useIsStandard()
+  // A failed request (e.g. the client timeout on a very large dataset) must not leave the spinner up for good.
+  if (result.state === 'error') {
+    return (
+      <section className="insights" aria-labelledby="insights-h">
+        <h2 id="insights-h" className="section-title">Business insights and key takeaways</h2>
+        <ErrorPanel error={result.error} onRetry={onRetry} />
+      </section>
+    )
+  }
+  const insights = result.state === 'done' ? result.data : null
   return (
     <section className="insights" aria-labelledby="insights-h">
       <h2 id="insights-h" className="section-title">Business insights and key takeaways</h2>

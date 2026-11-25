@@ -17,6 +17,7 @@ from src.config import DEFAULT_DB_PATH
 from src.database.connection import session
 from src.etl.pipeline import import_dataframe
 from src.services import registry
+from src.sql.runner import list_queries
 from tests.conftest import KNOWN_MAPPING, KNOWN_ROWS, known_frame
 
 TOKEN = "t" * 48
@@ -293,6 +294,16 @@ def test_sql_library_named_queries_only(client):
     assert client.post("/api/sql/customer_orders", json={}, headers=AUTH).status_code == 422
     assert client.post("/api/sql/kpi_summary", json={"sql": "DELETE FROM transactions"},
                        headers=AUTH).status_code == 422
+
+
+@pytest.mark.parametrize("name", list_queries())
+def test_every_library_query_runs_through_the_api(client, name):
+    # Same parameters as the SQL Library page; rfm_scores is a template and must be built, not run raw.
+    body = {"filters": {**PERIOD, "segments": ["Champions"]}, "customer_id": "A"}
+    r = client.post(f"/api/sql/{name}", json=body, headers=AUTH)
+    assert r.status_code == 200, r.text
+    if name == "rfm_scores":
+        assert r.json()["rows"] == 4  # every known customer, whatever the segment filter
 
 
 # --------------------------------------------------------------------------- reports

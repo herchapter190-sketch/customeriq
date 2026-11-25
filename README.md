@@ -70,7 +70,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module responsibilities, the request 
 
 ## Installation
 
-Developed and tested on Windows 11 with Python 3.15 and Node.js 26.
+Requires Python 3.15 and Node.js 26 (the versions it is developed and tested with, on Windows 11; older versions are untested).
 
 ```powershell
 cd "C:\path\to\Customer IQ"
@@ -196,9 +196,21 @@ These screenshots show the **Streamlit fallback** with the synthetic demo datase
 ## Testing
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest      # 263 tests
+.\.venv\Scripts\python.exe -m pytest      # 288 tests
 cd web; npm run typecheck; cd ..          # TypeScript check of the web app
 ```
+
+Browser (end-to-end) tests run the built app in Chromium against two throwaway servers with their own temporary synthetic databases:
+
+```powershell
+cd web
+npm run build
+npx playwright install chromium   # first time only
+npm run test:e2e                  # 74 tests plus a sign-in setup step; about 5-10 minutes
+cd ..
+```
+
+They cover sign-in, single-use links, session expiry, CSRF and Origin checks, every page in both view modes (direct load, refresh, back/forward, phone to desktop widths), the 3D scenes, SQL Library, downloads, and import, demo load and clear with their backups. The run fails if `data/customeriq.db` or `backups\` changes.
 
 The tests never touch `data/customeriq.db`; they use temporary databases. They cover cleaning, RFM, SQL results, cohorts, risk, insights, PDF and Excel reports, import, the SQL library, and the API (sessions, CSRF, Host and Origin checks, backups before writes, the served web app and its JSON 404s). SQL results are checked against a small hand-calculated dataset (documented in `tests/conftest.py`), so expected values are computed independently of the code under test.
 
@@ -214,6 +226,7 @@ The tests never touch `data/customeriq.db`; they use temporary databases. They c
 | Changes fail from the dev app, but reading works | The API's `--web-port` must equal the Vite port (`CIQ_WEB_PORT`). |
 | HTTP 400 on every request | Open the app as `127.0.0.1` or `localhost`. Other host names are refused. |
 | "Could not create a verified backup; the dataset was not changed" | Check free disk space and that `backups\` is writable, then try again. |
+| "The CustomerIQ API took too long to respond" | The request ran longer than 60 seconds, which happens with very large datasets (see *Limitations*). The server finishes the work and keeps the result, so retry after a minute or two. |
 | Pages say "No dataset is loaded yet" | Load the demo dataset or import a file in **Data Management**. |
 
 ## Limitations
@@ -224,6 +237,7 @@ The tests never touch `data/customeriq.db`; they use temporary databases. They c
 - **Local, single user.** The server only listens on `127.0.0.1`. It is not designed to be exposed on a network.
 - **Currency is not detected.** Transaction files do not say which currency they use, so amounts are shown as plain numbers labelled "Currency not specified" until you pick a currency. The choice only adds a symbol; nothing is converted. The PDF and Excel exports state the same setting.
 - **SQLite scale.** This suits datasets up to roughly a few million rows on a laptop. Larger volumes would need a warehouse engine.
+- **Business insights are slow on very large datasets.** On about one million transaction lines the insights panel on Executive Overview took about 121 seconds to compute in testing. The browser stops waiting after 60 seconds and offers *Retry*. The server finishes the calculation and caches it, so a retry after that returns at once. The rest of the page loads independently.
 - **Categories are optional.** Category analysis shows "Uncategorised" when the source file has no category column.
 - **Streamlit fallback notes.** The five section animations in `assets/animations` are never modified; on start, Streamlit writes streamable copies to `static/animations`. Fonts are served locally from `static/fonts` (SIL Open Font License). Opening a Streamlit page directly by URL (for example `/inactive`) logs two harmless `404` messages in the browser console; this is framework behaviour.
 

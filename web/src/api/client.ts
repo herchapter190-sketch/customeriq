@@ -50,6 +50,9 @@ export const pending = {
 }
 
 const TIMEOUT_MS = 60_000
+// The server finishes these even if the browser stops waiting (a large import takes minutes), so a
+// client timeout would report a failure for a dataset change that still happens. They get none.
+const NO_TIMEOUT = /^\/(import\/(preview|commit)|dataset\/(demo|clear))$/
 
 function kindFor(res: Response): ApiErrorKind {
   if (res.status === 401 || res.status === 403) return 'auth'
@@ -79,7 +82,7 @@ async function detailOf(res: Response): Promise<string> {
 
 async function send(path: string, init: RequestInit = {}, accept = 'application/json'): Promise<Response> {
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = NO_TIMEOUT.test(path) ? undefined : window.setTimeout(() => controller.abort(), TIMEOUT_MS)
   const method = (init.method ?? 'GET').toUpperCase()
   const headers = new Headers(init.headers)
   headers.set('Accept', accept)
@@ -101,7 +104,8 @@ async function send(path: string, init: RequestInit = {}, accept = 'application/
     })
   } catch (err) {
     if ((err as Error).name === 'AbortError' && !init.signal?.aborted) {
-      throw new ApiError(0, 'offline', 'The CustomerIQ API took too long to respond.')
+      // The API is running but busy (very large datasets can take minutes); it keeps the result once done.
+      throw new ApiError(0, 'server', 'The CustomerIQ API took too long to respond. Large datasets can take a few minutes; retry shortly.')
     }
     if ((err as Error).name === 'AbortError') throw err
     throw new ApiError(0, 'offline', 'The CustomerIQ API could not be reached.')
@@ -132,7 +136,7 @@ async function request<T>(path: string, init: RequestInit = {}, read = false): P
   try {
     return (await (await send(path, init)).json()) as T
   } catch (err) {
-    const transient = err instanceof ApiError && err.kind === 'offline' && !/too long/.test(err.message)
+    const transient = err instanceof ApiError && err.kind === 'offline'
     if (!read || !transient || init.signal?.aborted) throw err
     await wait(RETRY_DELAY_MS, init.signal)
     return (await (await send(path, init)).json()) as T

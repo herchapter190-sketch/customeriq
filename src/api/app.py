@@ -36,6 +36,7 @@ from src.insights.engine import Insight
 from src.reports.excel_export import build_excel_workbook
 from src.reports.pdf_report import build_pdf_report
 from src.reports.safe_export import csv_bytes
+from src.segments.rfm import build_rfm_sql
 from src.services import registry
 from src.sql.runner import list_queries, load_sql, run_sql
 
@@ -350,6 +351,8 @@ def _router() -> APIRouter:
             raise HTTPException(422, "This query requires customer_id")
         with session(_db(request)) as conn:
             filters = _validated(_filters(conn, req.filters))
+            if name == "rfm_scores":  # a template: scoring follows the active RFM settings, as in Streamlit
+                sql = build_rfm_sql(filters.rfm)
             ctx = registry.prepare_context(conn, filters)
             params = ctx.params(**({"customer_id": req.customer_id} if needs_customer else {}))
             conn.execute("PRAGMA query_only = ON")  # defence in depth: library queries are read-only

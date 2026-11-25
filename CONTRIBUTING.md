@@ -11,6 +11,7 @@ Before opening a pull request, run:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 cd web; npm run typecheck
+npm run build; npm run test:e2e   # browser tests on throwaway servers (see README, Testing)
 ```
 
 The local database (`data/customeriq.db`) is created on first run and is git-ignored. To start fresh, delete it, then load the synthetic demo dataset from **Data Management** in the web app (the Streamlit fallback loads it automatically on first launch).
