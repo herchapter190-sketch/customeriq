@@ -171,7 +171,6 @@ interface Extra {
 }
 
 export const api = {
-  health: () => request<{ status: string; api_version: string }>('/health'),
 
   /** Never throws for "signed out"; resolves `{ authenticated: false }` instead. */
   async session(): Promise<SessionInfo> {
