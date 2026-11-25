@@ -8,6 +8,8 @@ export interface Frame {
 
 export interface SessionInfo {
   authenticated: boolean
+  /** 'demo' is the public read-only deployment (src/api/demo.py). */
+  mode: 'local' | 'demo'
 }
 
 export interface CleaningSummary {

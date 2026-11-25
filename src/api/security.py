@@ -18,6 +18,7 @@ same-origin or through the dev proxy), restrictive headers and streamed body lim
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import secrets
@@ -173,6 +174,89 @@ def require_bearer(request: Request) -> None:
     if token is None or _from_browser(request) or not secrets.compare_digest(
             token.encode(), request.app.state.token.encode()):
         raise HTTPException(401, "Not authenticated")
+
+
+def require_demo_request(request: Request) -> None:
+    """Public demo: no login, but unsafe methods must not come from another site's page."""
+    if request.method in SAFE_METHODS:
+        return
+    origin = request.headers.get("origin")
+    if origin is not None and origin not in request.app.state.allowed_origins:
+        raise HTTPException(403, "Cross-origin request refused")
+    if request.headers.get("sec-fetch-site") not in (None, "same-origin", "none"):
+        raise HTTPException(403, "Cross-origin request refused")
+
+
+class DemoLimitMiddleware:
+    """Public demo only: per-IP request rate limit on /api, and a cap on concurrent expensive
+    requests (global, and per IP) so one visitor cannot exhaust the worker threads.
+
+    State lives on the event loop thread only, so no locks are needed (no await between
+    a check and its update)."""
+
+    def __init__(self, app: ASGIApp, per_minute: int = 120, max_expensive: int = 2, per_ip_expensive: int = 3,
+                 queue_wait_s: float = 15.0, max_clients: int = 10_000,
+                 expensive_prefixes: tuple[str, ...] = ("/api/analytics", "/api/sql/", "/api/reports/",
+                                                        "/api/dataset/demo/raw")) -> None:
+        self.app = app
+        self.per_minute = per_minute
+        self.per_ip_expensive = per_ip_expensive
+        self.queue_wait_s = queue_wait_s
+        self.max_clients = max_clients
+        self.expensive_prefixes = expensive_prefixes
+        self.slots = asyncio.Semaphore(max_expensive)
+        self.hits: dict[str, tuple[float, int]] = {}  # ip -> (window start, count)
+        self.inflight: dict[str, int] = {}            # ip -> expensive requests queued or running
+
+    def _allow(self, ip: str) -> bool:
+        now = time.monotonic()
+        start, count = self.hits.get(ip, (now, 0))
+        if now - start >= 60:
+            start, count = now, 0
+        if ip not in self.hits and len(self.hits) >= self.max_clients:
+            self.hits = {k: v for k, v in self.hits.items() if now - v[0] < 60}
+            while len(self.hits) >= self.max_clients:
+                self.hits.pop(next(iter(self.hits)))
+        self.hits[ip] = (start, count + 1)
+        return count < self.per_minute
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        if scope["type"] != "http" or not path.startswith("/api/") or path == "/api/health":
+            await self.app(scope, receive, send)
+            return
+        ip = (scope.get("client") or ("unknown",))[0]
+        if not self._allow(ip):
+            await _send_json(send, 429, b'{"detail":"Too many requests; try again in a minute"}', b"60")
+            return
+        if scope.get("method") in SAFE_METHODS or not path.startswith(self.expensive_prefixes):
+            await self.app(scope, receive, send)
+            return
+        if self.inflight.get(ip, 0) >= self.per_ip_expensive:
+            await _send_json(send, 429, b'{"detail":"Too many concurrent requests"}', b"5")
+            return
+        self.inflight[ip] = self.inflight.get(ip, 0) + 1
+        try:
+            try:
+                await asyncio.wait_for(self.slots.acquire(), self.queue_wait_s)
+            except TimeoutError:
+                await _send_json(send, 503, b'{"detail":"The demo is busy; try again shortly"}', b"5")
+                return
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                self.slots.release()
+        finally:
+            self.inflight[ip] -= 1
+            if not self.inflight[ip]:
+                del self.inflight[ip]
+
+
+async def _send_json(send: Send, status: int, body: bytes, retry_after: bytes) -> None:
+    await send({"type": "http.response.start", "status": status,
+                "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode()),
+                            (b"retry-after", retry_after)]})
+    await send({"type": "http.response.body", "body": body})
 
 
 class SecurityHeadersMiddleware:

@@ -176,11 +176,11 @@ export const api = {
   /** Never throws for "signed out"; resolves `{ authenticated: false }` instead. */
   async session(): Promise<SessionInfo> {
     try {
-      const info = await request<{ authenticated: boolean; csrf_token?: string }>('/session')
+      const info = await request<{ authenticated: boolean; csrf_token?: string; mode?: string }>('/session')
       csrfToken = info.csrf_token ?? null
-      return { authenticated: info.authenticated }
+      return { authenticated: info.authenticated, mode: info.mode === 'demo' ? 'demo' : 'local' }
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return { authenticated: false }
+      if (err instanceof ApiError && err.status === 401) return { authenticated: false, mode: 'local' }
       throw err
     }
   },

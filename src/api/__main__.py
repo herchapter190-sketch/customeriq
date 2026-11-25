@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import urllib.request
 
 import uvicorn
@@ -35,6 +36,8 @@ def main() -> None:
     parser.add_argument("--web-port", type=int, default=DEFAULT_WEB_PORT,
                         help="port of the local Vite dev server allowed to send browser writes (loopback only)")
     args = parser.parse_args()
+    if os.environ.get("CUSTOMERIQ_MODE", "local").strip().lower() not in ("", "local"):
+        parser.error("CUSTOMERIQ_MODE is not 'local'; the public demo runs with  python -m src.api.demo")
     if not 1024 <= args.port <= 65535:
         parser.error("port must be between 1024 and 65535")
     if args.port == 8517:

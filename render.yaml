@@ -1,0 +1,39 @@
+# CustomerIQ public read-only demo on Render (one web service, native Python runtime).
+# The local app is unaffected: it still runs with `python -m src.api` on loopback only.
+# Synthetic data only: the demo database is generated during the build; nothing from data/ or backups/
+# is used (both are git-ignored, so they are never in the deployed checkout either).
+services:
+  - type: web
+    name: customeriq-demo
+    runtime: python
+    plan: free
+    autoDeploy: false
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      npm ci --prefix web &&
+      npm run build --prefix web &&
+      python scripts/build_demo_db.py build/customeriq-demo.db
+    startCommand: python -m src.api.demo
+    # Render sends health checks with Host = the onrender.com subdomain, so it must be in
+    # CUSTOMERIQ_ALLOWED_HOSTS. /api/health is never rate limited.
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.15.2
+      - key: NODE_VERSION
+        value: 26.13.1
+      - key: CUSTOMERIQ_MODE
+        value: demo
+      - key: CUSTOMERIQ_DEMO_DB
+        value: build/customeriq-demo.db
+      # Must equal the public hostname Render assigns (it adds a suffix if the name is taken).
+      - key: CUSTOMERIQ_ALLOWED_HOSTS
+        value: customeriq-demo.onrender.com
+      # Render's proxies sit in 10.0.0.0/8; never "*" (the server refuses it).
+      - key: CUSTOMERIQ_FORWARDED_ALLOW_IPS
+        value: 10.0.0.0/8
+      # Per client-IP bucket; visitors behind one CDN edge can share a bucket, hence the high value.
+      - key: CUSTOMERIQ_RATE_LIMIT
+        value: "600"
+      - key: CUSTOMERIQ_MAX_CONCURRENT
+        value: "2"

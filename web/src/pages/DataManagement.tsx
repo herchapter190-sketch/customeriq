@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError, saveBlob, type CleaningOptions } from '../api/client'
+import { useSession } from '../api/session'
 import { rows, type CleaningSummary, type ImportPreview, type ImportResult } from '../api/types'
 import { ErrorPanel, Loading, SessionGate } from '../components/Status'
 import { BarList, DatasetGate, DataTable, Figures, PageHead, SceneHint, Section, TabPanel, Tabs, ThreeDOnly } from '../components/ui'
@@ -49,23 +50,28 @@ const countsOf = (s?: CleaningSummary) =>
   s ? { valid: s.sales_rows, returns: s.return_rows, rejected: s.rejected_rows, total: s.input_rows } : { valid: 0, returns: 0, rejected: 0, total: 0 }
 
 export default function DataManagement() {
+  const { demo } = useSession()
   return (
     <div className="env env--data">
-      <PageHead slug="data" lede="Import, validate and replace the active dataset. Every change is preceded by a verified backup.">
+      <PageHead
+        slug="data"
+        lede={demo ? 'The synthetic dataset behind this public demo, and how it was validated.' : 'Import, validate and replace the active dataset. Every change is preceded by a verified backup.'}
+      >
         The data behind every view
       </PageHead>
       <SessionGate>
         <DatasetGate allowEmpty>
-          <DataBody />
+          <DataBody readOnly={demo} />
         </DatasetGate>
       </SessionGate>
     </div>
   )
 }
 
-function DataBody() {
+/** `readOnly` (public demo): only "What is loaded now", without the clear control; the API has no write routes. */
+function DataBody({ readOnly = false }: { readOnly?: boolean }) {
   const { dataset, meta, refresh } = useDataset()
-  const [tab, setTab] = useState<TabId>(dataset?.has_data ? 'current' : 'import')
+  const [tab, setTab] = useState<TabId>(readOnly || dataset?.has_data ? 'current' : 'import')
   const [stage, setStage] = useState<DataStage>(dataset?.has_data ? 'loaded' : 'empty')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [mapping, setMapping] = useState<Record<string, string | null>>({})
@@ -101,6 +107,19 @@ function DataBody() {
     setResult(null)
     setMapping({})
     setStage(dataset?.has_data ? 'loaded' : 'empty')
+  }
+
+  if (readOnly) {
+    return (
+      <>
+        <p className="status-line" role="status" style={{ marginTop: 10 }}>
+          This public demo is read-only: it shows synthetic data, and importing, loading or clearing data is turned off.
+        </p>
+        <SceneHint>Cubes are your rows in proportion: ivory valid, wine returns, rose rejected.</SceneHint>
+        <Tabs tabs={TABS.filter((t) => t.id === 'current')} value="current" onChange={setTab} label="Data management" />
+        <CurrentTab readOnly />
+      </>
+    )
   }
 
   return (
@@ -377,7 +396,7 @@ function Rejections({ counts }: { counts: Record<string, number> }) {
   )
 }
 
-function CurrentTab() {
+function CurrentTab({ readOnly = false }: { readOnly?: boolean }) {
   const { dataset, refresh, refreshing } = useDataset()
   const [confirm, setConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -465,7 +484,7 @@ function CurrentTab() {
             <p className="muted small">None.</p>
           ))}
       </Section>
-      <Section title="Clear dataset">
+      {!readOnly && <Section title="Clear dataset">
         <label className="check">
           <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
           I understand this removes the loaded dataset from the local database.
@@ -476,7 +495,7 @@ function CurrentTab() {
           </button>
         </div>
         {msg && <p className="status-line" role="status">{msg}</p>}
-      </Section>
+      </Section>}
     </TabPanel>
   )
 }

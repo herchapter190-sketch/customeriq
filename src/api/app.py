@@ -25,8 +25,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from src.analytics.context import AnalysisFilters
-from src.config import DEFAULT_DB_PATH, PROJECT_ROOT, RISK_ORDER, SEGMENT_ORDER, CleaningOptions, RFMConfig, RiskConfig
-from src.database.backup import BackupError, backup_database
+from src.config import (DATA_DIR, DEFAULT_DB_PATH, PROJECT_ROOT, RISK_ORDER, SEGMENT_ORDER, CleaningOptions,
+                        RFMConfig, RiskConfig)
+from src.database.backup import BACKUP_DIR, BackupError, backup_database
 from src.database.connection import data_version, date_bounds, session
 from src.etl.loader import MAX_UPLOAD_MB, STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
 from src.etl.cleaner import clean_transactions
@@ -41,8 +42,9 @@ from src.services import registry
 from src.sql.runner import list_queries, load_sql, run_sql
 
 from . import schemas as s
-from .security import (SESSION_COOKIE, SESSION_TTL_S, BodyLimitMiddleware, SecurityHeadersMiddleware, SessionStore,
-                       require_auth, require_bearer, resolve_token)
+from .security import (SESSION_COOKIE, SESSION_TTL_S, BodyLimitMiddleware, DemoLimitMiddleware,
+                        SecurityHeadersMiddleware, SessionStore, require_auth, require_bearer, require_demo_request,
+                        resolve_token)
 
 log = logging.getLogger("customeriq.api")
 
@@ -58,6 +60,7 @@ def dev_origins_for(web_port: int) -> tuple[str, ...]:
 
 DEV_ORIGINS = dev_origins_for(DEFAULT_WEB_PORT)
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+MODES = ("local", "demo")  # demo: public, read-only, no login (see src/api/demo.py)
 CSV_EXPORTS = ("revenue_by_customer", "rfm_customers", "segment_summary", "monthly_revenue",
                "product_performance", "inactive_customers", "cohort_long", "monthly_acquisition")
 SQL_ROW_CAP = 5000
@@ -102,15 +105,27 @@ def _json(payload: Any, status: int = 200) -> Response:
 def create_app(db_path: str | Path | None = None, token: str | None = None, *,
                backup_dir: str | Path | None = None, port: int = DEFAULT_PORT,
                dev_origins: tuple[str, ...] = DEV_ORIGINS, max_upload_bytes: int = MAX_UPLOAD_MB * 1024 * 1024,
-               expose_sql_text: bool = False, web_dist: str | Path | None = None) -> FastAPI:
+               expose_sql_text: bool = False, web_dist: str | Path | None = None, mode: str = "local",
+               allowed_hosts: tuple[str, ...] = ALLOWED_HOSTS, allowed_origins: tuple[str, ...] = (),
+               rate_per_minute: int = 120, max_expensive: int = 2) -> FastAPI:
+    """``mode="local"`` (default) is the token/session protected local app. ``mode="demo"`` is the
+    public read-only demo: no login, no write routes, rate limited, and it only opens an explicit
+    demo database (never the local one). ``allowed_origins`` and the limits apply to demo only."""
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {MODES}")
+    demo = mode == "demo"
+    if demo and (not allowed_hosts or "*" in allowed_hosts):
+        raise ValueError("Demo mode needs an explicit trusted host list")
     # No interactive docs, schema or debug routes in any build.
     app = FastAPI(title="CustomerIQ local API", version=API_VERSION, docs_url=None, redoc_url=None,
                   openapi_url=None, debug=False)
-    app.state.db_path = Path(db_path or DEFAULT_DB_PATH)
+    app.state.mode = mode
+    app.state.db_path = _demo_db(db_path) if demo else Path(db_path or DEFAULT_DB_PATH)
     app.state.backup_dir = backup_dir
-    app.state.token = token or resolve_token()
+    app.state.token = None if demo else token or resolve_token()  # demo has no bearer/session routes
     app.state.sessions = SessionStore()
-    app.state.allowed_origins = frozenset((f"http://127.0.0.1:{port}", f"http://localhost:{port}", *dev_origins))
+    app.state.allowed_origins = (frozenset(allowed_origins) if demo else
+                                 frozenset((f"http://127.0.0.1:{port}", f"http://localhost:{port}", *dev_origins)))
     app.state.expose_sql_text = expose_sql_text
     app.state.write_lock = threading.Lock()
     app.state.uploads = OrderedDict()   # upload_id -> (created, filename, raw DataFrame)
@@ -119,8 +134,11 @@ def create_app(db_path: str | Path | None = None, token: str | None = None, *,
 
     # Order matters: the last added runs first. No CORS middleware on purpose: the
     # frontend is same-origin (or proxied in dev), so browsers block all cross-origin reads.
-    app.add_middleware(BodyLimitMiddleware, upload_bytes=max_upload_bytes + 64 * 1024)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(ALLOWED_HOSTS))
+    app.add_middleware(BodyLimitMiddleware, upload_bytes=max_upload_bytes + 64 * 1024,
+                       upload_paths=() if demo else ("/api/import/preview",))
+    if demo:
+        app.add_middleware(DemoLimitMiddleware, per_minute=rate_per_minute, max_expensive=max_expensive)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(RequestValidationError)
@@ -138,11 +156,35 @@ def create_app(db_path: str | Path | None = None, token: str | None = None, *,
     def health() -> dict:
         return {"status": "ok", "api_version": API_VERSION}
 
-    _session_routes(app)
-    app.include_router(_router(), dependencies=[Depends(require_auth)])
+    if demo:
+        _demo_session_routes(app)
+        app.include_router(_router(writes=False), dependencies=[Depends(require_demo_request)])
+    else:
+        _session_routes(app)
+        app.include_router(_router(), dependencies=[Depends(require_auth)])
     if web_dist is not None and (Path(web_dist) / "index.html").is_file():
         _frontend_routes(app, Path(web_dist))  # last, so every /api route above wins
     return app
+
+
+def _demo_db(db_path: str | Path | None) -> Path:
+    """The public demo opens only an explicit, existing demo database: never the local one or a backup."""
+    if db_path is None:
+        raise ValueError("Demo mode needs an explicit demo database path")
+    path = Path(db_path).resolve()
+    if path in {(DATA_DIR / "customeriq.db").resolve(), DEFAULT_DB_PATH.resolve()} or \
+            Path(BACKUP_DIR).resolve() in path.parents:
+        raise ValueError("Demo mode refuses the local database and its backups")
+    if not path.is_file():  # connect() would otherwise create an empty database
+        raise ValueError("Demo database not found")
+    return path
+
+
+def _demo_session_routes(app: FastAPI) -> None:
+    @app.get("/api/session")
+    def session_info() -> dict:
+        # No accounts in the public demo: every visitor reads the same dataset, and nothing can be written.
+        return {"authenticated": True, "mode": "demo"}
 
 
 def _frontend_routes(app: FastAPI, dist: Path) -> None:
@@ -289,7 +331,7 @@ def _summary_payload(result) -> dict:
 
 
 # --------------------------------------------------------------------------- routes
-def _router() -> APIRouter:
+def _router(writes: bool = True) -> APIRouter:
     r = APIRouter(prefix="/api")
 
     @r.get("/meta")
@@ -386,6 +428,17 @@ def _router() -> APIRouter:
             df = registry.run(conn, name, filters)
         return _download(csv_bytes(df), "text/csv; charset=utf-8", "csv", name)
 
+    @r.post("/dataset/demo/raw")
+    def dataset_demo_raw(req: s.DemoRawRequest) -> Response:
+        """Raw synthetic demo export, as the Streamlit download: generated in memory from the
+        validated seed and size (no file is read and no path is accepted); read-only."""
+        raw = generate_demo_transactions(n_customers=req.n_customers, seed=req.seed)
+        return Response(csv_bytes(raw), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="customeriq_synthetic_raw.csv"'})
+
+    if not writes:  # public demo: write routes are never registered, so they are plain 404s
+        return r
+
     @r.post("/import/preview")
     def import_preview(request: Request, file: UploadFile = File(...)) -> Response:
         try:
@@ -442,14 +495,6 @@ def _router() -> APIRouter:
                 result = load_demo_dataset(conn, seed=req.seed, n_customers=req.n_customers)
             _write_done(request)
         return _json(_summary_payload(result) | {"backup_created": backup})
-
-    @r.post("/dataset/demo/raw")
-    def dataset_demo_raw(req: s.DemoRawRequest) -> Response:
-        """Raw synthetic demo export, as the Streamlit download: generated in memory from the
-        validated seed and size (no file is read and no path is accepted); read-only."""
-        raw = generate_demo_transactions(n_customers=req.n_customers, seed=req.seed)
-        return Response(csv_bytes(raw), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": 'attachment; filename="customeriq_synthetic_raw.csv"'})
 
     @r.post("/dataset/clear")
     def dataset_clear(request: Request, _: s.ConfirmRequest) -> Response:
