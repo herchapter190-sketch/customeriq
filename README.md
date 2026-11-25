@@ -22,15 +22,24 @@
 | **SQL Library** | 24 documented read-only queries, run with the current filters |
 | **Exports** | PDF report, Excel workbook, formula-safe CSV |
 
-## Standard and 3D Exploration
+## Standard
+
+![Revenue Analytics](docs/screenshots/web/standard-revenue.png)
+
+| Cohort Retention | Customer Behaviour |
+|---|---|
+| ![Cohort Retention](docs/screenshots/web/standard-cohorts.png) | ![Customer Behaviour](docs/screenshots/web/standard-behaviour.png) |
+
+## 3D Exploration
 
 | | |
 |---|---|
-| ![Customer Segmentation](docs/screenshots/web/standard-segments.png) | ![Revenue Analytics](docs/screenshots/web/standard-revenue.png) |
 | ![Overview, 3D](docs/screenshots/web/3d-overview.png) | ![Segments, 3D](docs/screenshots/web/3d-segments.png) |
 | ![Cohorts, 3D](docs/screenshots/web/3d-cohorts.png) | ![Behaviour, 3D](docs/screenshots/web/3d-behaviour.png) |
 
 3D Exploration is a six-stop guided tour (three.js, loaded only when switched on; 2D fallback without WebGL).
+
+## On a phone
 
 | Phone · Standard | Phone · 3D | Import guide |
 |---|---|---|
