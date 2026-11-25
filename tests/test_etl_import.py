@@ -115,3 +115,78 @@ def test_sample_csv_roundtrip_through_buffer():
     buf.name = "upload.csv"
     df = read_table(buf)
     assert len(df) == 9
+
+
+# --------------------------------------------------------------------------- sheets, currency, line totals
+from src.etl.cleaner import clean_transactions, detect_currency  # noqa: E402
+
+LINE_MAP = {"invoice_id": "Invoice", "customer_id": "Customer", "invoice_date": "Date", "quantity": "Qty",
+            "revenue": "Total"}
+
+
+def _xlsx(**sheets: pd.DataFrame) -> bytes:
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        for name, df in sheets.items():
+            df.to_excel(xw, sheet_name=name, index=False)
+    return buf.getvalue()
+
+
+def test_excel_sheet_selection_and_first_sheet_with_data():
+    data = _xlsx(Notes=pd.DataFrame(), Sales=known_frame(), Old=known_frame().head(2))
+    df = read_table(data, "book.xlsx")
+    assert df.attrs["sheets"] == ["Notes", "Sales", "Old"] and df.attrs["sheet"] == "Sales" and len(df) == 9
+    old = read_table(data, "book.xlsx", sheet="Old")
+    assert old.attrs["sheet"] == "Old" and len(old) == 2
+    with pytest.raises(ValueError, match="Sheet not found"):
+        read_table(data, "book.xlsx", sheet="Missing")
+
+
+def test_line_totals_without_unit_price():
+    raw = pd.DataFrame({"Invoice": ["1", "1", "C2"], "Customer": ["A", "A", "A"],
+                        "Date": ["2024-01-01", "2024-01-01", "2024-01-05"], "Qty": ["2", "3", "-1"],
+                        "Total": ["7.00", "4.50", "-3.50"]})
+    res = clean_transactions(apply_mapping(raw, LINE_MAP))
+    assert res.clean["unit_price"].round(2).tolist() == [3.5, 1.5, 3.5]
+    assert res.clean["revenue"].tolist() == [7.0, 4.5, -3.5]
+    assert any("derived" in w for w in res.warnings)
+    with pytest.raises(ValueError, match="Unit price or Line total"):
+        apply_mapping(raw, {k: v for k, v in LINE_MAP.items() if k != "revenue"})
+
+
+def test_mixed_currencies_are_refused_single_currency_is_recorded():
+    base = {"Invoice": ["1", "2"], "Customer": ["A", "B"], "Date": ["2024-01-01"] * 2, "Qty": ["1", "1"]}
+    with pytest.raises(ValueError, match=r"Mixed currencies found \(\$, EUR\)"):
+        clean_transactions(apply_mapping(pd.DataFrame(base | {"Total": ["$5", "€5"]}), LINE_MAP))
+    cur = pd.DataFrame(base | {"Total": ["5", "6"], "Cur": ["usd", "GBP"]})
+    with pytest.raises(ValueError, match="Mixed currencies"):
+        detect_currency(apply_mapping(cur, LINE_MAP | {"currency": "Cur"}))
+    one = clean_transactions(apply_mapping(pd.DataFrame(base | {"Total": ["£5", "£6"]}), LINE_MAP))
+    assert one.summary["currency"] == "GBP" and one.clean["revenue"].sum() == 11
+    assert clean_transactions(apply_mapping(known_frame(), KNOWN_MAPPING)).summary["currency"] is None
+
+
+def test_bare_dollar_is_never_assumed_to_be_usd():
+    from src.etl.cleaner import AmbiguousCurrency
+    base = {"Invoice": ["1", "2"], "Customer": ["A", "B"], "Date": ["2024-01-01"] * 2, "Qty": ["1", "1"]}
+    dollars = apply_mapping(pd.DataFrame(base | {"Total": ["$5", "$6"]}), LINE_MAP)
+    with pytest.raises(AmbiguousCurrency, match="USD, CAD or AUD"):
+        clean_transactions(dollars)
+    chosen = clean_transactions(dollars, currency="CAD")
+    assert chosen.summary["currency"] == "CAD" and chosen.clean["revenue"].sum() == 11
+    with pytest.raises(ValueError, match="Currency conflict"):
+        detect_currency(dollars, "GBP")
+    with pytest.raises(ValueError, match="Unsupported currency: XYZ"):
+        detect_currency(dollars, "XYZ")
+    # A currency column or a prefixed symbol names the dollar; "CA$" is not misread as "A$" or "$".
+    col = pd.DataFrame(base | {"Total": ["$5", "$6"], "Cur": ["aud", "AUD"]})
+    assert detect_currency(apply_mapping(col, LINE_MAP | {"currency": "Cur"})) == "AUD"
+    cad = clean_transactions(apply_mapping(pd.DataFrame(base | {"Total": ["CA$5", "CA$1,000.50"]}), LINE_MAP))
+    assert cad.summary["currency"] == "CAD" and cad.clean["revenue"].sum() == 1005.5
+    for totals in (["US$5", "A$6"], ["$5", "£6"]):
+        with pytest.raises(ValueError, match="Mixed currencies"):
+            detect_currency(apply_mapping(pd.DataFrame(base | {"Total": totals}), LINE_MAP))
+    # Codes the app cannot label are named, never shown as another currency or as "not specified".
+    inr = pd.DataFrame(base | {"Total": ["5", "6"], "Cur": ["INR", "INR"]})
+    with pytest.raises(ValueError, match=r"Unsupported currency: INR\. Supported: USD, CAD, AUD"):
+        clean_transactions(apply_mapping(inr, LINE_MAP | {"currency": "Cur"}))

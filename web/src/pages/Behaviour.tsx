@@ -73,7 +73,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
   useEffect(() => () => setHover('behaviour', null), [])
 
   const freq = rows<{ frequency_band: string; customers: number; net_revenue: number; customer_share_pct: number; revenue_share_pct: number }>(data.purchase_frequency)
-  const bands = rows<{ value_band: string; orders: number; gross_sales: number; avg_lines_per_order: number; avg_units_per_order: number; order_share_pct: number }>(data.order_value_bands)
+  const bands = rows<{ value_band: string; orders: number; gross_sales: number; avg_lines_per_order: number; avg_units_per_order: number | null; order_share_pct: number }>(data.order_value_bands)
   const acq = rows<{ month: string; new_customers: number; returning_customers: number; new_customer_sales: number; returning_customer_sales: number; cumulative_new_customers: number }>(data.monthly_acquisition)
   const gaps = useMemo(() => {
     const g = rows<{ gap_days: number }>(data.interpurchase_gaps)
@@ -95,7 +95,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
           ]}
         />
       )}
-      <SceneHint>Weekdays by hour: taller, brighter columns are busier. Hover a column to read it.</SceneHint>
+      <SceneHint>Taller, brighter columns are busier. Hover to read one.</SceneHint>
       <div className="chips" role="group" aria-label="Measure" style={{ marginTop: 18 }}>
         <button type="button" className="chip" aria-pressed={metric === 'orders'} onClick={() => setMetric('orders')}>Orders</button>
         <button type="button" className="chip" aria-pressed={metric === 'sales'} onClick={() => setMetric('sales')}>Gross sales</button>
@@ -156,7 +156,8 @@ function BehaviourBody({ data }: { data: Loaded }) {
             value: b.order_share_pct,
             display: fmtPct(b.order_share_pct),
             color: SERIES[3],
-            note: `${fmtWhole(b.orders)} orders · ${b.avg_units_per_order.toFixed(1)} units per order`,
+            // An empty band (no orders in that range) has no average.
+            note: b.orders ? `${fmtWhole(b.orders)} orders · ${b.avg_units_per_order?.toFixed(1)} units per order` : 'No orders',
           }))}
         />
       </Section>
@@ -197,7 +198,7 @@ function BehaviourBody({ data }: { data: Loaded }) {
             { key: 'rs', label: 'Revenue %', render: (r) => fmtPct(r.revenue_share_pct), numeric: true },
           ]}
         />
-        <p className="muted small">Repeat = two or more orders in the customer’s history up to the end date. Orders and revenue are measured within the selected period.</p>
+        <p className="muted small">Repeat = two or more orders up to the end date.</p>
       </Section>
 
       <Section title="Monthly customer acquisition" aside={<CsvButton rows={acq} name="customeriq_monthly_acquisition.csv" />}>

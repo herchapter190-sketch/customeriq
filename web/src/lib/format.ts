@@ -1,8 +1,22 @@
-// No dataset declares a currency (Streamlit default "Not specified"), so amounts are plain numbers
-// unless the reader picks a display symbol in the filter bar. Nothing is ever converted.
+// An import that names one currency sets the display symbol (dataset.tsx); otherwise amounts are plain
+// numbers unless the reader picks a symbol in the filter bar. Nothing is ever converted.
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 const whole = new Intl.NumberFormat('en', { maximumFractionDigits: 0 })
 const money = new Intl.NumberFormat('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+/** Display symbol only; nothing is converted. Without a currency in the data the default is "Not specified".
+ *  `value` is the prefix sent to the API (reports, insights); codes without a single symbol keep a trailing space. */
+export const CURRENCIES = [
+  { label: 'Not specified', value: '', code: '' },
+  { label: '$ USD', value: '$', code: 'USD' },
+  { label: 'CA$ CAD', value: 'CA$', code: 'CAD' },
+  { label: 'A$ AUD', value: 'A$', code: 'AUD' },
+  { label: '€ EUR', value: '€', code: 'EUR' },
+  { label: '£ GBP', value: '£', code: 'GBP' },
+  { label: 'JD JOD', value: 'JD ', code: 'JOD' },
+  { label: 'AED', value: 'AED ', code: 'AED' },
+  { label: 'SAR', value: 'SAR ', code: 'SAR' },
+] as const
 
 let symbol = ''
 /** Called by DatasetProvider on every render, before any page formats a value. */
@@ -12,7 +26,7 @@ export function setCurrencySymbol(s: string): void {
 export const currencySymbol = () => symbol
 /** "Amounts in GBP" / "Currency not specified", as Streamlit's currency_caption(). */
 export const currencyCaption = () =>
-  symbol ? `Amounts in ${({ '£': 'GBP', $: 'USD', '€': 'EUR' } as Record<string, string>)[symbol] ?? symbol}` : 'Currency not specified'
+  symbol ? `Amounts in ${CURRENCIES.find((c) => c.value === symbol)?.code || symbol.trim()}` : 'Currency not specified'
 
 const signed = (v: number, body: (x: number) => string) => `${v < 0 ? '−' : ''}${symbol}${body(Math.abs(v))}`
 

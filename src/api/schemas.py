@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from src.config import SEGMENT_ORDER, RFMConfig, RiskConfig
+from src.etl.cleaner import SUPPORTED_CURRENCIES
 from src.etl.synthetic import DEFAULT_SEED
 
 SegmentName = Literal[SEGMENT_ORDER]  # type: ignore[valid-type]
@@ -80,8 +81,9 @@ ColumnName = Annotated[str, StringConstraints(min_length=1, max_length=200)]
 class ImportCommit(Strict):
     upload_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{16,64}$")]
     mapping: dict[Literal["invoice_id", "customer_id", "invoice_date", "quantity", "unit_price", "product_id",
-                          "description", "category", "country", "revenue"], ColumnName | None]
+                          "description", "category", "country", "revenue", "currency"], ColumnName | None]
     options: CleaningIn = CleaningIn()
+    currency: Literal[SUPPORTED_CURRENCIES] | None = None  # type: ignore[valid-type]  # chosen when '$' is ambiguous
     confirm: Literal[True]
 
 

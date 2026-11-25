@@ -232,15 +232,17 @@ export const api = {
   reportCsv: (name: string, filters: Filters) =>
     download(`/reports/csv/${encodeURIComponent(name)}`, { filters }, `customeriq_${name}.csv`),
 
-  importPreview(file: File, signal?: AbortSignal) {
+  importPreview(file: File, sheet?: string, currency?: string, signal?: AbortSignal) {
     const body = new FormData()
     body.append('file', file, file.name)
+    if (sheet) body.append('sheet', sheet)
+    if (currency) body.append('currency', currency)
     return request<ImportPreview>('/import/preview', { method: 'POST', body, signal })
   },
-  importCommit(uploadId: string, mapping: Record<string, string | null>, options: CleaningOptions) {
+  importCommit(uploadId: string, mapping: Record<string, string | null>, options: CleaningOptions, currency?: string | null) {
     return request<ImportResult>('/import/commit', {
       method: 'POST',
-      body: JSON.stringify({ upload_id: uploadId, mapping, options, confirm: true }),
+      body: JSON.stringify({ upload_id: uploadId, mapping, options, confirm: true, ...(currency ? { currency } : {}) }),
     })
   },
   /** Raw synthetic demo export (with its injected data-quality issues); generated server-side, writes nothing. */

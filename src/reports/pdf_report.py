@@ -358,10 +358,10 @@ def _insight_block(ins: Insight, styles) -> KeepTogether:
 
 def currency_note(currency: str) -> str:
     """How amounts in the report are labelled. Datasets do not declare a currency, so none is assumed."""
-    names = {"£": "GBP (£)", "$": "USD ($)", "€": "EUR (€)"}
+    names = {"£": "GBP (£)", "$": "USD ($)", "CA$": "CAD (CA$)", "A$": "AUD (A$)", "€": "EUR (€)", "JD ": "JOD (JD)", "AED ": "AED", "SAR ": "SAR"}
     if not currency:
         return "Not specified: amounts are in the dataset's own currency units"
-    return f"{names.get(currency, currency)}, as selected in the app (display only, no conversion)"
+    return f"{names.get(currency, currency.strip())}, as selected in the app (display only, no conversion)"
 
 
 def build_pdf_report(conn: sqlite3.Connection, ctx: AnalysisContext, currency: str = "") -> bytes:

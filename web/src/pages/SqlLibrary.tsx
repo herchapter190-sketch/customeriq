@@ -17,7 +17,7 @@ const NEEDS_CUSTOMER = new Set(['customer_orders'])
 export default function SqlLibrary() {
   return (
     <div className="env env--sql">
-      <PageHead slug="sql" lede="The documented SQL behind every analysis, run read-only against the current filters. Only these fixed files can run; there is no free-form SQL.">
+      <PageHead slug="sql" lede="The SQL behind every analysis, run read-only on the current filters.">
         The queries behind each analysis
       </PageHead>
       <SessionGate>
@@ -93,7 +93,7 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
 
   return (
     <>
-      <SceneHint>Each slab is one query file, edged by family. Select one here or in the scene; running it lays one line of light per returned row.</SceneHint>
+      <SceneHint>One slab per query. Run one to light a line per returned row.</SceneHint>
       <div className="sql-columns">
         <nav aria-label="Query library">
           <SearchBox label="Search queries" value={query} onChange={setQuery} placeholder="Name, purpose or technique" />
@@ -134,7 +134,7 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
           })}
           {!visible.length && <p className="muted small" style={{ marginTop: 14 }}>No query matches this search.</p>}
           <p className="muted small" style={{ marginTop: 14 }}>
-            {visible.length === queries.length ? `${queries.length} queries` : `${visible.length} of ${queries.length} queries`} · fixed, read-only files; free-form SQL is not accepted.
+            {visible.length === queries.length ? `${queries.length} queries` : `${visible.length} of ${queries.length} queries`} · read-only
           </p>
         </nav>
 
@@ -155,8 +155,7 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
             <pre className="code" tabIndex={0} aria-label={`SQL for ${q.name}`}>{highlight(q.sql)}</pre>
           ) : (
             <p className="muted small" style={{ marginTop: 14 }}>
-              The SQL text stays on the server (the API runs with SQL text hidden). It can be read in src/sql/queries/{q.name}.sql
-              or in the Streamlit SQL Library.
+              Source: src/sql/queries/{q.name}.sql
             </p>
           )}
           {needsCustomer && (

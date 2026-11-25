@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { api, ApiError, saveBlob, type CleaningOptions } from '../api/client'
 import { useSession } from '../api/session'
 import { rows, type CleaningSummary, type ImportPreview, type ImportResult } from '../api/types'
@@ -18,6 +18,7 @@ const TABS = [
   { id: 'import', label: 'Import your data' },
   { id: 'current', label: 'What is loaded now' },
   { id: 'demo', label: 'Try the demo data' },
+  { id: 'howto', label: 'How importing works' },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
@@ -33,17 +34,25 @@ const TEMPLATE = {
 }
 
 const STEPS = ['Upload', 'Map columns', 'Validate', 'Clean', 'Import'] as const
+/** Plain-language description of each import step (shown read-only in the public demo). */
+const STEP_HELP: Record<(typeof STEPS)[number], string> = {
+  Upload: 'CSV or Excel, one row per item sold',
+  'Map columns': 'confirm the suggested columns',
+  Validate: 'valid, returns and rejected rows, with reasons',
+  Clean: 'date format, zero prices, cancellations',
+  Import: 'backup first, then replace',
+}
 const STEP_OF: Record<DataStage, number> = { empty: -1, loaded: 5, uploaded: 0, mapping: 1, validated: 3, importing: 4, imported: 5, failed: 4 }
 /** Plain-language guidance for where the reader is in the import workflow. */
 const STAGE_HELP: Record<DataStage, string> = {
-  empty: 'No dataset is loaded. Start by uploading a transaction file in “Import your data”, or load the synthetic demo.',
-  loaded: 'A dataset is loaded. To replace it, upload a new file: you will map its columns, review validation, then confirm the import.',
-  uploaded: 'Step 1 — reading your file. Large files can take a few seconds.',
-  mapping: 'Step 2 — check that each standard field points at the right column. Required fields are marked *. The validation below shows how the rows would be cleaned.',
-  validated: 'Step 3–4 — validation and cleaning reviewed. Confirm the replacement in step 4 to import.',
-  importing: 'Step 5 — importing. A verified backup of the current dataset is taken first.',
-  imported: 'Import complete. Every view now reads the new dataset.',
-  failed: 'The import did not complete. The current dataset was not changed; see the message below.',
+  empty: 'No dataset loaded.',
+  loaded: 'Upload a file to replace the current dataset.',
+  uploaded: 'Reading the file…',
+  mapping: 'Check the column for each field (* required).',
+  validated: 'Validation reviewed. Confirm to import.',
+  importing: 'Backing up, then importing…',
+  imported: 'Import complete.',
+  failed: 'Import failed. The current dataset is unchanged.',
 }
 
 const countsOf = (s?: CleaningSummary) =>
@@ -55,7 +64,7 @@ export default function DataManagement() {
     <div className="env env--data">
       <PageHead
         slug="data"
-        lede={demo ? 'The synthetic dataset behind this public demo, and how it was validated.' : 'Import, validate and replace the active dataset. Every change is preceded by a verified backup.'}
+        lede={demo ? 'The synthetic dataset behind this demo.' : 'Import, validate and replace your data, with a backup first.'}
       >
         The data behind every view
       </PageHead>
@@ -71,7 +80,8 @@ export default function DataManagement() {
 /** `readOnly` (public demo): only "What is loaded now", without the clear control; the API has no write routes. */
 function DataBody({ readOnly = false }: { readOnly?: boolean }) {
   const { dataset, meta, refresh } = useDataset()
-  const [tab, setTab] = useState<TabId>(readOnly || dataset?.has_data ? 'current' : 'import')
+  const wantsImport = useLocation().hash === '#import' // from the "Import your data" links
+  const [tab, setTab] = useState<TabId>(wantsImport ? (readOnly ? 'howto' : 'import') : readOnly || dataset?.has_data ? 'current' : 'import')
   const [stage, setStage] = useState<DataStage>(dataset?.has_data ? 'loaded' : 'empty')
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [mapping, setMapping] = useState<Record<string, string | null>>({})
@@ -113,11 +123,11 @@ function DataBody({ readOnly = false }: { readOnly?: boolean }) {
     return (
       <>
         <p className="status-line" role="status" style={{ marginTop: 10 }}>
-          This public demo is read-only: it shows synthetic data, and importing, loading or clearing data is turned off.
+          This public demo is read-only.
         </p>
         <SceneHint>Cubes are your rows in proportion: ivory valid, wine returns, rose rejected.</SceneHint>
-        <Tabs tabs={TABS.filter((t) => t.id === 'current')} value="current" onChange={setTab} label="Data management" />
-        <CurrentTab readOnly />
+        <Tabs tabs={TABS.filter((t) => t.id === 'current' || t.id === 'howto')} value={tab === 'howto' ? 'howto' : 'current'} onChange={setTab} label="Data management" />
+        {tab === 'howto' ? <HowToTab /> : <CurrentTab readOnly />}
       </>
     )
   }
@@ -137,7 +147,7 @@ function DataBody({ readOnly = false }: { readOnly?: boolean }) {
       </ol>
       <p className="muted small" role="status" style={{ marginTop: 10 }}>{STAGE_HELP[stage]}</p>
       <SceneHint>Cubes are your rows in proportion: ivory valid, wine returns, rose rejected.</SceneHint>
-      <Tabs tabs={TABS} value={tab} onChange={setTab} label="Data management" />
+      <Tabs tabs={TABS.filter((t) => t.id !== 'howto')} value={tab} onChange={setTab} label="Data management" />
       {tab === 'import' && (
         <ImportTab
           preview={preview}
@@ -191,15 +201,19 @@ function ImportTab(props: {
   const fields = meta?.standard_fields ?? {}
   const maxMb = meta?.max_upload_mb ?? 0
 
-  const upload = async (file: File | undefined) => {
-    if (!file) return
+  const [file, setFile] = useState<File | null>(null)
+  // `sheet` / `currency` re-read the same file; a failed switch keeps the preview already shown.
+  const upload = async (f: File | undefined | null, sheet?: string, currency?: string) => {
+    if (!f) return
+    const reread = !!(sheet || currency)
     setError('')
     setBusy(true)
-    props.setStage('uploaded')
+    if (!reread) props.setStage('uploaded')
     try {
-      props.setPreview(await api.importPreview(file))
+      props.setPreview(await api.importPreview(f, sheet, currency))
+      setFile(f)
     } catch (e) {
-      props.setPreview(null)
+      if (!reread) props.setPreview(null)
       setError(e instanceof Error ? e.message : 'The file could not be read.')
     } finally {
       setBusy(false)
@@ -213,6 +227,10 @@ function ImportTab(props: {
   }
 
   const missing = Object.entries(fields).filter(([k, f]) => f.required && !mapping[k]).map(([, f]) => f.label)
+  if (preview && !mapping.unit_price && !mapping.revenue) missing.push('Unit price or Line total')
+  // A bare "$" names no currency: the importer must pick the dollar (a mapped Currency column also settles it).
+  const needsCurrency = !!preview?.currency_options?.length && !preview.currency && !mapping.currency
+  if (needsCurrency) missing.push('Currency')
   const customised =
     !!preview &&
     (JSON.stringify(mapping) !== JSON.stringify(preview.suggested_mapping) ||
@@ -224,7 +242,7 @@ function ImportTab(props: {
     setError('')
     props.setStage('importing')
     try {
-      const r = await api.importCommit(preview.upload_id, mapping, options)
+      const r = await api.importCommit(preview.upload_id, mapping, options, preview.currency)
       props.onResult(r, true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'The import failed.')
@@ -239,10 +257,7 @@ function ImportTab(props: {
     <TabPanel id="import">
       {!preview && (
         <>
-          <p className="muted small" style={{ marginTop: 20 }}>
-            One row per item sold, as CSV or Excel (.xlsx), up to {maxMb} MB. Required: invoice ID, customer ID, date, quantity
-            and unit price. Compatible with the UCI Online Retail datasets.
-          </p>
+          <p className="muted small" style={{ marginTop: 20 }}>CSV or Excel (.xlsx), one row per item sold, up to {maxMb} MB.</p>
           <label
             className={`drop${over ? ' is-over' : ''}`}
             onDragOver={(e) => (e.preventDefault(), setOver(true))}
@@ -279,9 +294,45 @@ function ImportTab(props: {
         <>
           <Section title={`1 · ${preview.filename}`} aside={<button type="button" className="linkish" onClick={props.onReset}>Choose another file</button>}>
             <p className="muted small">
-              {fmtWhole(preview.rows)} rows · {preview.columns.length} columns. CustomerIQ suggested a column for each field;
-              correct any that are wrong.
+              {fmtWhole(preview.rows)} rows · {preview.columns.length} columns · columns suggested; correct any that are wrong.
             </p>
+            {preview.sheets && preview.sheets.length > 1 && (
+              <label className="field field--stack" style={{ maxWidth: 280 }}>
+                <span className="field__label">Sheet</span>
+                <select value={preview.sheet ?? ''} disabled={busy} onChange={(e) => void upload(file, e.target.value)}>
+                  {preview.sheets.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {!!preview.currency_options?.length && (
+              <label className="field field--stack" style={{ maxWidth: 280 }}>
+                <span className="field__label">Currency *</span>
+                <select
+                  value={preview.currency ?? ''}
+                  disabled={busy}
+                  onChange={(e) => void upload(file, preview.sheet ?? undefined, e.target.value)}
+                >
+                  <option value="" disabled>Choose: prices use “$”</option>
+                  {preview.currency_options.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {preview.sample && preview.sample.data.length > 0 && (
+              <div style={{ margin: '14px 0 18px' }}>
+                <p className="field__label">Your first {preview.sample.data.length} rows, as read from the file</p>
+                <DataTable<{ i: number; r: unknown[] }>
+                  caption={`First rows of ${preview.filename}`}
+                  rows={preview.sample.data.map((r, i) => ({ i, r }))}
+                  rowKey={(x) => String(x.i)}
+                  maxHeight={240}
+                  columns={preview.sample.columns.map((c, j) => ({ key: `${j}`, label: String(c), render: (x) => String(x.r[j] ?? '') }))}
+                />
+              </div>
+            )}
             <div className="form-grid">
               {Object.entries(fields).map(([key, f]) => (
                 <label key={key} className="field field--stack">
@@ -340,8 +391,8 @@ function ImportTab(props: {
             ) : null}
             <p className="muted small">
               {customised
-                ? 'This preview used the suggested columns and default options. The import re-validates with your choices and reports the exact result.'
-                : 'Validated with the suggested columns and default cleaning options.'}
+                ? 'Preview uses the suggested columns; the import re-validates with your choices.'
+                : 'Validated with the suggested columns and default options.'}
             </p>
             <div className="actions">
               <button type="button" className="btn" onClick={() => props.setStage('validated')} disabled={stage === 'validated'}>
@@ -368,6 +419,33 @@ function ImportTab(props: {
   )
 }
 
+/** Public demo: explains the import workflow without any control that could change data. */
+function HowToTab() {
+  const { meta } = useDataset()
+  const fields = Object.values(meta?.standard_fields ?? {})
+  return (
+    <TabPanel id="howto">
+      <p className="status-line" style={{ marginTop: 20 }}>Importing is turned off here. Run CustomerIQ locally to import your data:</p>
+      <ol className="howto">
+        {STEPS.map((s) => (
+          <li key={s}><strong>{s}</strong> · {STEP_HELP[s]}</li>
+        ))}
+      </ol>
+      <Section title="What your file needs">
+        <p className="muted small">* required · any column names{meta?.max_upload_mb ? ` · up to ${meta.max_upload_mb} MB` : ''}</p>
+        <ul className="howto__fields">
+          {fields.map((f) => <li key={f.label}>{f.label}{f.required ? ' *' : ''}</li>)}
+        </ul>
+        <div className="actions">
+          <button type="button" className="btn" onClick={() => saveBlob(toCsv(TEMPLATE.columns, TEMPLATE.data), 'customeriq_template.csv')}>
+            Download the CSV template
+          </button>
+        </div>
+      </Section>
+    </TabPanel>
+  )
+}
+
 function SummaryFigures({ s }: { s: CleaningSummary }) {
   return (
     <Figures
@@ -378,6 +456,7 @@ function SummaryFigures({ s }: { s: CleaningSummary }) {
         { label: 'Rejected rows', value: fmtWhole(s.rejected_rows) },
         { label: 'Customers', value: fmtWhole(s.customers) },
         { label: 'Date range', value: <span className="small">{fmtDate(s.date_min)} – {fmtDate(s.date_max)}</span> },
+        ...(s.currency ? [{ label: 'Currency', value: s.currency }] : []),
       ]}
     />
   )
@@ -532,11 +611,7 @@ function DemoTab({ onLoaded }: { onLoaded: () => void }) {
   }
   return (
     <TabPanel id="demo">
-      <p className="muted" style={{ marginTop: 20, maxWidth: '60ch' }}>
-        The demo dataset is synthetic: a deterministic generator simulates an online homeware retailer with customer personas,
-        churn, seasonal peaks, partial returns and a few deliberate data-quality problems for the cleaning rules to catch. It
-        is labelled as synthetic everywhere, including reports.
-      </p>
+      <p className="muted small" style={{ marginTop: 20 }}>Synthetic homeware shop, labelled synthetic everywhere.</p>
       <div className="form-grid">
         <label className="field field--stack">
           <span className="field__label">Random seed (same seed, same data)</span>

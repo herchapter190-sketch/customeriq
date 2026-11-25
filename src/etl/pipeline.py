@@ -19,6 +19,7 @@ def import_dataframe(
     source_name: str,
     is_synthetic: bool = False,
     options: CleaningOptions | None = None,
+    currency: str | None = None,
 ) -> CleaningResult:
     """Validate, clean and load ``raw`` as the active dataset.
 
@@ -26,7 +27,7 @@ def import_dataframe(
     current dataset.
     """
     standard = apply_mapping(raw, mapping)
-    result = clean_transactions(standard, options)
+    result = clean_transactions(standard, options, currency)
     if result.clean.empty:
         return result
     meta = {
@@ -36,6 +37,7 @@ def import_dataframe(
         "mapping": mapping,
         "cleaning_summary": result.summary,
         "warnings": result.warnings,
+        "currency": result.summary.get("currency"),
     }
     replace_dataset(conn, result.clean, result.rejected, meta)
     return result

@@ -10,12 +10,15 @@ Uploaded CSV or Excel columns are mapped to these fields. Common header names ar
 | `customer_id` | Yes | Customer identifier. | Must not be empty. Allowed characters: letters, digits, `_ . -` (max 64). Numeric IDs exported as floats (`12345.0`) are normalised to `12345`. |
 | `invoice_date` | Yes | Transaction date and time. | Must parse. Mixed formats are supported, and day-first parsing is optional. |
 | `quantity` | Yes | Units on the line. Negative values denote returns. | Numeric and non-zero. |
-| `unit_price` | Yes | Price per unit. | Numeric and ≥ 0. Zero-price lines are rejected by default (configurable). Currency symbols and thousands separators are stripped. |
+| `unit_price` | Yes, or `revenue` | Price per unit. | Numeric and ≥ 0. Zero-price lines are rejected by default (configurable). Currency symbols (`$ US$ CA$ C$ A$ AU$ £ €`) and thousands separators are stripped. |
 | `product_id` | No | SKU / stock code. | Missing values are labelled `UNKNOWN`. |
 | `description` | No | Product name. | — |
 | `category` | No | Product category. | Missing values become `Uncategorised` in category analysis. |
 | `country` | No | Customer or shipping country. | — |
-| `revenue` | No | Line revenue from the source. | Always **recomputed** as quantity × unit price. A warning is shown when the source values disagree. |
+| `revenue` | Yes, or `unit_price` | Line total from the source. | Always **recomputed** as quantity × unit price. A warning is shown when the source values disagree. Without unit prices, unit price is derived as line total ÷ quantity (a warning says so); a negative total on a positive quantity is rejected as a negative price. |
+| `currency` | No | Currency code of the line. | All lines must share one currency, from this column or from the symbols in the prices; a file mixing currencies is refused before anything is written. A bare `$` could be USD, CAD or AUD, so it is never assumed: map this column or choose the currency during import. Supported codes: USD, CAD, AUD, EUR, GBP, JOD, AED, SAR; any other code is refused with its name. The single currency is stored with the dataset and sets the display symbol. Nothing is converted. |
+
+**Excel.** `.xlsx` / `.xlsm` workbooks: the first sheet with data rows is read by default, and the import screen lets you pick any other sheet.
 
 **Returns.** A line is treated as a return when its quantity is negative **or** its invoice ID starts with the cancellation prefix (`C` by default) followed by a digit, for example `C536379`. Returns are kept with negative quantity and revenue and `is_return = 1`. They reduce net revenue but are never counted as orders.
 

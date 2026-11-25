@@ -127,19 +127,17 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
   return (
     <>
       <Takeaway categories={['Segments', 'Risk']} />
-      <SceneHint>Each sphere is a customer, sized by spend. Hover to read one; click to open it.</SceneHint>
+      <SceneHint>Each sphere is a customer, sized by spend. Hover or tap to read one; click or tap again to open it.</SceneHint>
       <HoverReadout />
       {total > SCENE_CAP && (
         <p className="muted small">
-          The scene shows the {fmtWhole(SCENE_CAP)} highest-spending of {fmtWhole(total)} customers; every figure below covers all of them.
+          Scene: top {fmtWhole(SCENE_CAP)} of {fmtWhole(total)} customers by spend.
         </p>
       )}
 
       <StandardOnly>
-      <p className="muted small">
-        Groups are worked out <strong>as of {fmtDate(end)}</strong> from each customer’s full history up to that date. They are
-        descriptive groupings from transparent rules, not predictions.
-        {rules.rfm?.method === 'quantile' && ' Quantile scores give tied values the same (lowest) score, so a grid cell can be empty.'}
+      <p className="muted small" title={`Full history up to this date. Descriptive rules, not predictions.${rules.rfm?.method === 'quantile' ? ' Quantile ties share the lowest score, so a grid cell can be empty.' : ''}`}>
+        As of <strong>{fmtDate(end)}</strong>
       </p>
       </StandardOnly>
       <RfmEditor />
@@ -180,7 +178,6 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
           </Panel>
         </div>
         <Section title="Segment profiles">
-          <p className="muted small">What each group looks like and how to approach it. Select a card for the full profile.</p>
           <div className="seg-cards">
             {summary.map((s) => (
               <button
@@ -216,7 +213,7 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
         }
       >
         <BarList
-          caption="Bar length: share of net revenue. Select a segment to focus it in the scene."
+          caption="Share of net revenue · select to focus"
           items={summary.map((s) => ({
             key: s.segment,
             label: s.segment,
@@ -310,7 +307,7 @@ function RfmGrid({ grid }: { grid: GridRow[] }) {
         </tbody>
       </table>
       <p className="heat-scale" aria-hidden="true">Fewer <span className="heat-scale__bar" /> More customers</p>
-      <p className="muted small">Higher recency = bought more recently; higher frequency = more orders. Cells show customers; hover a cell for its revenue.</p>
+      <p className="muted small">Cells: customers · hover for revenue.</p>
     </div>
   )
 }
@@ -323,8 +320,9 @@ function HoverReadout() {
   if (mode === '2d' || standard) return null
   const c = typeof hover === 'number' ? data?.customers[hover] : undefined
   return (
-    <aside className="readout" aria-live="polite">
-      {c ? (
+    // Stays mounted (empty) while idle so the live region announces hovers; the SceneHint already says how to use it.
+    <aside className="readout" aria-live="polite" style={c ? undefined : { borderColor: 'transparent' }}>
+      {c && (
         <>
           <p className="readout__label">
             <span className="seg-dot" style={{ background: segmentColor(c.segment) }} aria-hidden="true" /> {c.segment}
@@ -333,8 +331,6 @@ function HoverReadout() {
             Customer {c.id} <span>{fmtMoney(c.monetary)} spent · {fmtWhole(c.frequency)} orders · last order {fmtWhole(c.recency)} days ago</span>
           </p>
         </>
-      ) : (
-        <p className="readout__label">Hover a customer sphere to read it here</p>
       )}
     </aside>
   )
@@ -423,8 +419,7 @@ function Explorer({ customers, focus, pick }: { customers: RfmRow[]; focus: stri
       </div>
       <p className="muted small">
         {fmtWhole(view.length)} customers
-        {view.length > TABLE_CAP ? `; the first ${fmtWhole(TABLE_CAP)} are listed (the CSV holds all)` : ''}. Select a row to see that
-        customer’s order history.
+        {view.length > TABLE_CAP ? ` · first ${fmtWhole(TABLE_CAP)} listed (CSV has all)` : ''} · select a row for orders
       </p>
       <DataTable
         caption="RFM customers"

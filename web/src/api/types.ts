@@ -26,6 +26,8 @@ export interface CleaningSummary {
   products: number
   date_min: string | null
   date_max: string | null
+  /** The file's one currency (currency column or price symbols); null when the file names none. */
+  currency?: string | null
 }
 
 export interface DatasetMeta {
@@ -36,6 +38,7 @@ export interface DatasetMeta {
   cleaning_summary?: CleaningSummary
   warnings?: string[]
   loaded_at?: string
+  currency?: string | null
 }
 
 export interface DatasetOverview {
@@ -187,6 +190,15 @@ export interface ImportPreview {
   columns: string[]
   suggested_mapping: Record<string, string | null>
   validation: ValidationPayload
+  /** First rows exactly as read from the file (before mapping and cleaning). */
+  sample?: Frame
+  /** Excel only: every worksheet, and the one read. */
+  sheets?: string[]
+  sheet?: string | null
+  /** The currency the preview was validated with, when one was chosen. */
+  currency?: string | null
+  /** Set when prices use a bare "$": the dollar currencies to choose from before importing. */
+  currency_options?: string[]
 }
 
 export interface ImportResult extends ValidationPayload {

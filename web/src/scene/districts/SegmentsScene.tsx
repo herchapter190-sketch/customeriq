@@ -7,7 +7,7 @@ import { onDark } from '../../lib/palette'
 /** Burgundy–rose only: lifted for the dark stage, with dusty pinks re-saturated so they never read as taupe. */
 const segmentColor = (name: string) => onDark(baseColor(name), 0.62, 0.5)
 import { fmtWhole } from '../../lib/format'
-import { Label, lacquer, pointerCursor, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
+import { Label, lacquer, pointerCursor, secondTap, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
 import { setFocus, setHover, setPick, useDistrict, useFocus, useHover, type SegCustomer, type SegSummary } from '../store'
 
 /**
@@ -232,6 +232,7 @@ export default function SegmentsScene() {
     if (e.instanceId == null) return
     e.stopPropagation()
     const c = clusters[ci]
+    if (!secondTap(c.members[e.instanceId].id)) return
     setFocus('segments', c.seg.segment)
     setPick('segments', c.members[e.instanceId].id)
   }

@@ -383,6 +383,37 @@ a:hover {
   background: var(--burgundy);
   box-shadow: inset 0 0 0 1px rgb(var(--rose-rgb) / 0.35);
 }
+.rail__import {
+  display: block;
+  margin-top: -8px;
+  padding: 8px 10px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 8px;
+  transition: background 180ms var(--ease);
+}
+.rail__import::before {
+  content: '↑ ';
+  color: var(--rose-l);
+}
+.rail__import:hover,
+.rail__import.active {
+  background: rgb(var(--card-rgb) / 0.6);
+}
+.rail__mode {
+  margin: 0;
+  padding: 4px 8px;
+  justify-self: start;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+}
 .rail__list {
   list-style: none;
   margin: 0;
@@ -536,6 +567,10 @@ html[data-mode='3d'] .page {
   html[data-mode='3d'] .page {
     padding: 46svh 16px 56px;
     max-width: none;
+    pointer-events: none; /* the empty top padding sits over the scene: let taps reach it */
+  }
+  html[data-mode='3d'] .page > * {
+    pointer-events: auto;
   }
   html[data-mode='3d'] .page--overview {
     padding-top: 52svh;

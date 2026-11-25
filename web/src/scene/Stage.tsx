@@ -6,7 +6,7 @@ import { useDataset } from '../lib/dataset'
 import { useReducedMotion } from '../lib/hooks'
 import { CameraRig } from './CameraRig'
 import { Fallback2D } from './Fallback2D'
-import { District, SceneEnvProvider, StudioLighting } from './kit'
+import { disarm, District, SceneEnvProvider, StudioLighting } from './kit'
 import { Particles } from './Particles'
 import { RevenueOrbit } from './RevenueOrbit'
 import { sceneStore } from './store'
@@ -83,10 +83,43 @@ export default function Stage({ slug }: { slug: string }) {
     return () => window.clearTimeout(t)
   }, [lost])
 
+  // Touch has no hover: R3F only reads objects on pointermove (a tap sends none) and clears them on pointerleave
+  // (a tap always sends one). So a tap reads what is under it, and the reading stays until the next tap or a scroll.
+  // html[data-touch-read] lets phones pin the readout on screen while it holds a tapped reading.
+  const stageRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const root = document.documentElement
+    const read = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || !e.isTrusted) return
+      e.target?.dispatchEvent(new PointerEvent('pointermove', e))
+      root.dataset.touchRead = ''
+    }
+    const keep = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') e.stopPropagation()
+    }
+    const clear = () => {
+      if (!('touchRead' in root.dataset)) return
+      delete root.dataset.touchRead
+      disarm()
+      el.firstElementChild?.dispatchEvent(new PointerEvent('pointerleave')) // R3F's event root: clears the reading
+    }
+    el.addEventListener('pointerdown', read, true)
+    el.addEventListener('pointerleave', keep, true)
+    addEventListener('scroll', clear, { passive: true })
+    return () => {
+      el.removeEventListener('pointerdown', read, true)
+      el.removeEventListener('pointerleave', keep, true)
+      removeEventListener('scroll', clear)
+      clear()
+    }
+  }, [twoD])
+
   if (twoD) return <Fallback2D dim={slug !== 'overview'} />
 
   return (
-    <div className="stage" aria-hidden="true">
+    <div className="stage" aria-hidden="true" ref={stageRef}>
       <SceneBoundary key={generation} onError={() => setFailed(true)}>
         <Canvas
           dpr={quality === 'high' ? [1, 1.75] : [1, 1.25]}

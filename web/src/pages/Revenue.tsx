@@ -123,7 +123,7 @@ function RevenueBody({ data }: { data: Loaded }) {
       <Tabs tabs={TABS} value={tab} onChange={setTab} label="Revenue views" />
       {tab === 'trend' && (
         <TabPanel id="trend">
-          <SceneHint>The ribbon's height at each month is the selected measure. Hover along it to read any month.</SceneHint>
+          <SceneHint>Ribbon height = the selected measure. Hover to read a month.</SceneHint>
           <div className="chips" role="group" aria-label="Measure" style={{ marginTop: 18 }}>
             {METRICS.map((m) => (
               <button key={m.id} type="button" className="chip" aria-pressed={metric === m.id} onClick={() => setMetric(m.id)}>
@@ -138,7 +138,7 @@ function RevenueBody({ data }: { data: Loaded }) {
             <TrendCharts months={months} metric={metric} />
           </StandardOnly>
           <Section title="Every month" aside={<CsvButton rows={months} name="customeriq_monthly_revenue.csv" />}>
-            <p className="muted small">Gross is everything sold; returns are refunds for returned items; net is what you kept. A widening gap between gross and net means returns are eating more of your sales.</p>
+            <p className="muted small">Net = gross sales − returns.</p>
             <DataTable
               caption="Monthly revenue"
               rows={months}
@@ -305,8 +305,7 @@ function Drivers({ data }: { data: Loaded }) {
         </div>
       </StandardOnly>
       <SceneHint>
-        The ribbon now traces the concentration curve: customers ranked by revenue, left to right, and the share of revenue
-        they generate together.
+        The ribbon is now the concentration curve: customers ranked by revenue, and their cumulative share.
       </SceneHint>
       <Section title="Revenue from the top customers">
         <BarList

@@ -15,15 +15,18 @@ STANDARD_FIELDS: dict[str, tuple[bool, str]] = {
     "customer_id": (True, "Customer ID"),
     "invoice_date": (True, "Transaction date"),
     "quantity": (True, "Quantity"),
-    "unit_price": (True, "Unit price"),
+    "unit_price": (False, "Unit price (or map Line total)"),
     "product_id": (False, "Product ID"),
     "description": (False, "Product description"),
     "category": (False, "Category"),
     "country": (False, "Country"),
-    "revenue": (False, "Revenue (optional, recomputed)"),
+    "revenue": (False, "Line total (used when there is no unit price)"),
+    "currency": (False, "Currency"),
 }
 
 REQUIRED_FIELDS = [k for k, (req, _) in STANDARD_FIELDS.items() if req]
+# One of these must be mapped: with only a line total, unit price is derived as total / quantity.
+PRICE_FIELDS = ("unit_price", "revenue")
 
 # Normalised synonyms (lower-case, alphanumerics only). Covers the UCI "Online
 # Retail" and "Online Retail II" datasets and common e-commerce exports.
@@ -41,6 +44,7 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "category": ("category", "productcategory", "department", "itemcategory", "categoryname"),
     "country": ("country", "countryname", "region", "market", "shipcountry"),
     "revenue": ("revenue", "sales", "amount", "totalprice", "linetotal", "total", "salesamount"),
+    "currency": ("currency", "currencycode", "curr", "currencyid", "ccy"),
 }
 
 SUPPORTED_EXTENSIONS = (".csv", ".txt", ".xlsx", ".xlsm")
@@ -73,12 +77,16 @@ def suggest_mapping(columns: list[str]) -> dict[str, str | None]:
     return mapping
 
 
-def read_table(source: str | Path | BinaryIO | bytes, filename: str | None = None) -> pd.DataFrame:
+def read_table(source: str | Path | BinaryIO | bytes, filename: str | None = None,
+               sheet: str | None = None) -> pd.DataFrame:
     """Read a CSV or Excel file into a DataFrame of raw (mostly string) values.
 
     ``source`` may be a path, raw bytes or a file-like object (e.g. a Streamlit upload).
     Columns are read as strings for CSV so that validation, not the parser, decides
     what is valid. Excel cells keep native types (dates stay dates).
+
+    Excel: ``sheet`` picks a worksheet by name; without it the first sheet with data rows is
+    read. The workbook's sheet names and the sheet read are in ``df.attrs["sheets"]`` / ``["sheet"]``.
     """
     if isinstance(source, (str, Path)):
         filename = filename or str(source)
@@ -100,12 +108,22 @@ def read_table(source: str | Path | BinaryIO | bytes, filename: str | None = Non
 
     if ext in (".xlsx", ".xlsm"):
         check_xlsx_expansion(data)
-        df = pd.read_excel(io.BytesIO(data), sheet_name=0, engine="openpyxl")
-    else:
-        df = _read_csv_bytes(data)
+        with pd.ExcelFile(io.BytesIO(data), engine="openpyxl") as xl:
+            sheets = [str(n) for n in xl.sheet_names]
+            if sheet is not None and sheet not in sheets:
+                raise ValueError("Sheet not found in the workbook.")
+            for name in [sheet] if sheet is not None else sheets:
+                df = _tidy(xl.parse(name))
+                if not df.empty:
+                    break
+        df.attrs.update(sheets=sheets, sheet=name)
+        return df
+    return _tidy(_read_csv_bytes(data))
+
+
+def _tidy(df: pd.DataFrame) -> pd.DataFrame:
     df.columns = [str(c).strip() for c in df.columns]
-    df = df.dropna(how="all")
-    return df.reset_index(drop=True)
+    return df.dropna(how="all").reset_index(drop=True)
 
 
 def check_xlsx_expansion(data: bytes, max_mb: int | None = None, max_members: int | None = None) -> None:
@@ -142,9 +160,11 @@ def _read_csv_bytes(data: bytes) -> pd.DataFrame:
 
 def apply_mapping(raw: pd.DataFrame, mapping: dict[str, str | None]) -> pd.DataFrame:
     """Rename mapped source columns to standard names; unmapped optional fields become empty."""
-    missing = [f for f in REQUIRED_FIELDS if not mapping.get(f)]
+    missing = [STANDARD_FIELDS[f][1] for f in REQUIRED_FIELDS if not mapping.get(f)]
+    if not any(mapping.get(f) for f in PRICE_FIELDS):
+        missing.append("Unit price or Line total")
     if missing:
-        labels = ", ".join(STANDARD_FIELDS[f][1] for f in missing)
+        labels = ", ".join(missing)
         raise ValueError(f"Required fields are not mapped: {labels}")
     chosen = [c for c in mapping.values() if c]
     if len(chosen) != len(set(chosen)):

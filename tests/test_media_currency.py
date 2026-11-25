@@ -40,3 +40,4 @@ def test_faststart_is_lossless_and_leaves_original_untouched(section, tmp_path):
 def test_currency_note_never_assumes_a_currency():
     assert currency_note("").startswith("Not specified")
     assert "GBP" in currency_note("£") and "no conversion" in currency_note("£")
+    assert currency_note("JD ").startswith("JOD (JD)")

@@ -45,7 +45,7 @@ REJECTION_REASONS: dict[str, str] = {
     "invalid_date": "Unparseable transaction date",
     "invalid_quantity": "Quantity is not numeric",
     "zero_quantity": "Quantity is zero",
-    "invalid_unit_price": "Unit price is not numeric",
+    "invalid_unit_price": "Unit price (or line total) is not numeric",
     "negative_unit_price": "Negative unit price (adjustment)",
     "zero_unit_price": "Zero unit price",
     "duplicate_row": "Exact duplicate line",
@@ -112,7 +112,7 @@ def _normalise_id(series: pd.Series) -> pd.Series:
 def _to_number(series: pd.Series) -> pd.Series:
     if pd.api.types.is_numeric_dtype(series):
         return pd.to_numeric(series, errors="coerce").astype(float)
-    text = _omap(_to_text(series), lambda v: v if v is None else re.sub(r"[£$€\s]", "", v))
+    text = _omap(_to_text(series), lambda v: v if v is None else re.sub(r"(?:US|CA|AU|C|A)?\$|[£€\s]", "", v))
     # European decimal comma ("12,5") -> "12.5"; otherwise commas are thousand separators.
     text = _omap(text, lambda v: v if v is None else (v.replace(",", ".") if re.fullmatch(r"-?\d+,\d{1,2}", v) else v.replace(",", "")))
     return pd.to_numeric(text, errors="coerce").astype(float)
@@ -178,12 +178,68 @@ def _summary(clean: pd.DataFrame, rejected: pd.DataFrame, input_rows: int, dupli
     }
 
 
-def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None) -> CleaningResult:
+# Currencies the app can label; web/src/lib/format.ts CURRENCIES lists the same codes.
+SUPPORTED_CURRENCIES = ("USD", "CAD", "AUD", "EUR", "GBP", "JOD", "AED", "SAR")
+DOLLAR_CURRENCIES = ("USD", "CAD", "AUD")
+DOLLAR = "$"  # a bare "$" could be any dollar currency, so on its own it never decides the currency
+# Symbols the number parser strips. Prefixed dollars come first so "CA$" is not also read as "A$" or "$".
+CURRENCY_SYMBOLS = {"US$": "USD", "CA$": "CAD", "AU$": "AUD", "C$": "CAD", "A$": "AUD", "£": "GBP", "€": "EUR",
+                    "$": DOLLAR}
+
+
+class AmbiguousCurrency(ValueError):
+    """Prices use a bare "$" and neither a currency column nor the importer says which dollar."""
+
+
+def detect_currency(df: pd.DataFrame, declared: str | None = None) -> str | None:
+    """The one currency of a mapped table (``declared``, a currency column or price symbols), or None.
+
+    Raises ValueError when several currencies appear (their amounts would otherwise be summed as one),
+    when a currency is not supported, or when ``declared`` contradicts the file; AmbiguousCurrency when
+    prices use a bare "$" and nothing names the dollar.
+    """
+    found: set[str] = set()
+    if "currency" in df:
+        codes = _to_text(df["currency"]).dropna().str.upper()
+        found |= {CURRENCY_SYMBOLS.get(c, c) for c in codes.unique()}
+    for col in ("unit_price", "revenue"):
+        if col in df and not pd.api.types.is_numeric_dtype(df[col]):
+            text = df[col].dropna().astype(str)
+            for sym, code in CURRENCY_SYMBOLS.items():
+                if text.str.contains(sym, regex=False).any():
+                    found.add(code)
+                    text = text.str.replace(sym, "", regex=False)
+    unsupported = sorted(found - {DOLLAR, *SUPPORTED_CURRENCIES})
+    if declared is not None and declared not in SUPPORTED_CURRENCIES:
+        unsupported.insert(0, declared)
+    if unsupported:
+        more = "…" if len(unsupported) > 5 else ""
+        raise ValueError(f"Unsupported currency: {', '.join(unsupported[:5])}{more}. "
+                         f"Supported: {', '.join(SUPPORTED_CURRENCIES)}.")
+    named = found - {DOLLAR}
+    if len(named) > 1 or (DOLLAR in found and named - set(DOLLAR_CURRENCIES)):
+        raise ValueError(f"Mixed currencies found ({', '.join(sorted(found))}). Totals would add different "
+                         "currencies together; import one currency per file.")
+    if declared is not None:
+        if (named and named != {declared}) or (DOLLAR in found and declared not in DOLLAR_CURRENCIES):
+            raise ValueError(f"Currency conflict: the file uses {', '.join(sorted(found))}, not {declared}.")
+        return declared
+    if named:
+        return next(iter(named))
+    if DOLLAR in found:
+        raise AmbiguousCurrency("Prices use '$', which could be USD, CAD or AUD. Choose the currency, "
+                                "or map a Currency column.")
+    return None
+
+
+def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None,
+                       currency: str | None = None) -> CleaningResult:
     options = options or CleaningOptions()
     warnings: list[str] = []
     input_rows = len(df)
     if input_rows == 0:
         return _empty_result(0, ["The dataset contains no rows."])
+    currency = detect_currency(df, currency)
 
     work = pd.DataFrame(index=df.index)
     work["source_row"] = np.arange(1, input_rows + 1)  # 1-based data row number
@@ -197,6 +253,10 @@ def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None)
     work["category"] = _to_text(df["category"]) if "category" in df else None
     work["country"] = _to_text(df["country"]) if "country" in df else None
     source_revenue = _to_number(df["revenue"]) if "revenue" in df else pd.Series(np.nan, index=df.index)
+    # No unit prices, only line totals: derive the price; zero/invalid quantities are rejected first.
+    derived_price = bool(work["unit_price"].isna().all() and source_revenue.notna().any())
+    if derived_price:
+        work["unit_price"] = source_revenue / work["quantity"].where(work["quantity"] != 0)
 
     reason = pd.Series([None] * input_rows, index=df.index, dtype=object)
 
@@ -244,7 +304,7 @@ def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None)
         warnings.append("No valid transactions remain after validation.")
         result = _empty_result(input_rows, warnings)
         result.rejected = rejected
-        result.summary = _summary(result.clean, rejected, input_rows, duplicates)
+        result.summary = _summary(result.clean, rejected, input_rows, duplicates) | {"currency": currency}
         return result
 
     prefix = options.return_invoice_prefix
@@ -261,7 +321,10 @@ def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None)
 
     src_rev = source_revenue.loc[good.index]
     comparable = src_rev.notna()
-    if comparable.any():
+    if derived_price:
+        warnings.append(f"No unit prices supplied: unit price was derived as line total / quantity "
+                        f"for {len(good):,} line(s).")
+    elif comparable.any():
         mismatch = (src_rev[comparable].abs() - good.loc[comparable, "revenue"].abs()).abs() > 0.01
         if mismatch.any():
             warnings.append(f"{int(mismatch.sum())} line(s) had a revenue value that did not equal quantity x "
@@ -285,4 +348,5 @@ def clean_transactions(df: pd.DataFrame, options: CleaningOptions | None = None)
     good["invoice_month"] = ts.dt.strftime("%Y-%m")
     good["month_num"] = (ts.dt.year * 12 + ts.dt.month - 1).astype(int)
     clean = good[CLEAN_COLUMNS].sort_values(["invoice_ts", "invoice_id"]).reset_index(drop=True)
-    return CleaningResult(clean, rejected, _summary(clean, rejected, input_rows, duplicates), warnings)
+    summary = _summary(clean, rejected, input_rows, duplicates) | {"currency": currency}
+    return CleaningResult(clean, rejected, summary, warnings)

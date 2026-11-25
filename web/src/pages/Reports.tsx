@@ -26,7 +26,7 @@ type Exp = 'pdf' | 'xlsx' | 'csv'
 export default function Reports() {
   return (
     <div className="env env--reports">
-      <PageHead slug="reports" lede="PDF executive report, Excel workbook and formula-safe CSV extracts, built by the API from the current filters.">
+      <PageHead slug="reports" lede="PDF report, Excel workbook and CSV extracts.">
         Reports to take into the room
       </PageHead>
       <SessionGate>
@@ -40,7 +40,7 @@ export default function Reports() {
 }
 
 function ReportsBody() {
-  const { filters, key, meta, dataset, currency } = useDataset()
+  const { filters, key, meta, currency } = useDataset()
   const csvNames = meta?.csv_exports ?? []
   const [csv, setCsv] = useState(0)
   const [status, setStatus] = useState<Partial<Record<Exp, { ok: boolean; text: string }>>>({})
@@ -79,11 +79,7 @@ function ReportsBody() {
   return (
     <>
       <SceneHint>Hover an export to light it. The orbs are this period's findings.</SceneHint>
-      {dataset?.meta.is_synthetic && <p className="muted small">The demo dataset is loaded, so every report is labelled as synthetic.</p>}
-      <p className="muted small">
-        Reports use the filters currently selected (period, segments, scoring and inactivity rules) and the currency symbol chosen in the
-        filter bar{currency ? ` (${currency})` : ' (currently not specified)'}.
-      </p>
+      <p className="muted small">Uses the current filters and currency{currency ? ` (${currency.trim()})` : ''}.</p>
       <div className="exports">
         <article className="export" {...hoverProps('pdf')}>
           <span className="export__format" style={{ ['--c' as string]: '#6E1530' }}>PDF</span>
@@ -161,7 +157,6 @@ function ReportsBody() {
           )
         }
       >
-        <p className="muted small">Each finding comes from a documented rule applied to the calculated metrics; rules without enough data are skipped rather than estimated.</p>
         <div className="chips" role="group" aria-label="Finding type" style={{ marginTop: 14 }}>
           {KINDS.map((k) => (
             <button key={k.id} type="button" className="chip" aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>

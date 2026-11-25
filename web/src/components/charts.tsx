@@ -515,7 +515,8 @@ export function Panel({
   className = '',
 }: {
   title: string
-  note?: ReactNode
+  /** Definition shown on hover, focus or tap, not as visible text. */
+  note?: string
   aside?: ReactNode
   children: ReactNode
   span?: 1 | 2 | 3
@@ -526,13 +527,21 @@ export function Panel({
     <section className={`panel panel--span${span} ${className}`} aria-labelledby={id}>
       <header className="panel__head">
         <div>
-          <h2 id={id} className="panel__title">{title}</h2>
-          {note && <p className="panel__note">{note}</p>}
+          <h2 id={id} className="panel__title">{title}{note && <Info text={note} />}</h2>
         </div>
         {aside && <div className="panel__aside">{aside}</div>}
       </header>
       {children}
     </section>
+  )
+}
+
+/** Small "i" marker: the text appears on hover, keyboard focus or tap (CSS, no JS), so definitions stay out of the layout. */
+export function Info({ text }: { text: string }) {
+  return (
+    <span className="info" tabIndex={0} role="note" aria-label={text} data-tip={text}>
+      i
+    </span>
   )
 }
 

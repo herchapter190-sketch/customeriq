@@ -2,19 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from '../api/client'
 import { useSession } from '../api/session'
 import type { ApiMeta, DatasetInfo, Filters, RfmRules, RiskRules } from '../api/types'
-import { setCurrencySymbol } from './format'
+import { CURRENCIES, setCurrencySymbol } from './format'
 
 /** Period presets, the same windows as the Streamlit sidebar (src/ui/state.py `_preset_range`). */
 export const PRESETS = ['All data', 'Last 12 months', 'Last 6 months', 'Last 3 months', 'Year to date'] as const
 export type Preset = (typeof PRESETS)[number] | 'Custom'
 
-/** Display symbol only; nothing is converted (src/ui/state.py CURRENCIES). */
-export const CURRENCIES = [
-  { label: 'Not specified', value: '' },
-  { label: '£ GBP', value: '£' },
-  { label: '$ USD', value: '$' },
-  { label: '€ EUR', value: '€' },
-] as const
+export { CURRENCIES } from './format'
 
 const DAY = 86_400_000
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -145,6 +139,10 @@ export function DatasetProvider({ children }: { children: ReactNode }) {
     setCurrency('')
     setMotion(true)
   }, [resetFilters, setMotion])
+
+  // A dataset that names its currency (currency column or price symbols) shows it; the reader can still change it.
+  const datasetCurrency = dataset?.meta?.currency ?? null
+  useEffect(() => setCurrency(CURRENCIES.find((c) => c.code === datasetCurrency)?.value ?? ''), [datasetCurrency])
 
   // Formatting reads the symbol synchronously, so set it before children render.
   setCurrencySymbol(currency)

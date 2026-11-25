@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import { rows, type AnalyticsMap, type Insight } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
 import { BarList, DatasetGate, DataTable, Details, FilterBar, Section, StandardOnly, ThreeDOnly } from '../components/ui'
+import { ProductIntro } from '../components/Tour'
 import { CategoryChart, Donut, Panel, shortMonth } from '../components/charts'
 import { SERIES } from '../lib/palette'
 import { useIsStandard } from '../lib/viewMode'
@@ -64,6 +65,7 @@ export default function Overview() {
           The shape of your customer base
         </h1>
       </header>
+      <ProductIntro />
       <SessionGate>
         <DatasetGate>
           <FilterBar />
@@ -131,8 +133,8 @@ function OverviewBody({ data, insights, retryInsights }: { data: Loaded; insight
       <KpiLedger items={[...HEADLINE, ...MORE]} comp={comp} hasPrev={hasPrev} />
       <p className="muted small">
         {hasPrev
-          ? `Changes compare with the previous period of the same length (${fmtDate(p0)} to ${fmtDate(p1)}). Hover a card for its definition.`
-          : `No sales exist in the previous period (${fmtDate(p0)} to ${fmtDate(p1)}), so no comparison is shown.`}
+          ? `Compared with ${fmtDate(p0)} – ${fmtDate(p1)}.`
+          : `No sales in the prior period (${fmtDate(p0)} – ${fmtDate(p1)}).`}
       </p>
 
       <ThreeDOnly>
@@ -224,7 +226,7 @@ function OverviewBody({ data, insights, retryInsights }: { data: Loaded; insight
           <Section title="Customer groups: share of customers vs revenue">
             <BarList
               max={100}
-              caption="Bar: share of revenue. Groups whose revenue share is far above their customer share are the ones to protect first."
+              caption="Share of revenue"
               items={seg.map((s) => ({
                 key: s.segment,
                 label: s.segment,
@@ -240,7 +242,6 @@ function OverviewBody({ data, insights, retryInsights }: { data: Loaded; insight
 
         {acq.length > 0 && (
           <Section title="New vs returning customers by month">
-            <p className="muted small">A healthy business keeps the returning column steady or growing; if only new customers grow, you are winning customers but not keeping them.</p>
             <DataTable
               caption="New and returning customers by month"
               rows={acq}
@@ -297,10 +298,7 @@ function Insights({ result, onRetry }: { result: AsyncState<Insight[]>; onRetry:
               </li>
             ))}
           </ol>
-          <p className="muted small">
-            Each recommendation comes from simple, transparent rules applied to your figures. The full list with reasoning is on{' '}
-            <Link to="/reports">Reports &amp; Exports</Link>.
-          </p>
+          <p className="small"><Link to="/reports">All findings →</Link></p>
         </>
       )}
     </section>

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, type ComponentType, type LazyExoticC
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { SessionProvider } from './api/session'
 import { Nav } from './components/Nav'
+import { TourNav, TourQuestion } from './components/Tour'
 import { BootVeil, Loading } from './components/Status'
 import { DatasetProvider } from './lib/dataset'
 import Planned, { NotFound } from './pages/Planned'
@@ -94,6 +95,7 @@ function Shell() {
       )}
       <Nav />
       <main ref={main} tabIndex={-1} className={`page page--${route?.slug ?? 'none'}`} key={pathname}>
+        {mode === '3d' && <TourQuestion slug={route?.slug ?? ''} />}
         <Suspense fallback={<Loading label="Loading view" />}>
           <Routes>
             <Route path="/" element={<Overview />} />
@@ -103,6 +105,7 @@ function Shell() {
             })}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          {mode === '3d' && <TourNav slug={route?.slug ?? ''} />}
         </Suspense>
       </main>
       {veil && mode === '3d' && <BootVeil />}

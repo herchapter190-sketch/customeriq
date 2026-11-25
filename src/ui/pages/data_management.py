@@ -8,7 +8,7 @@ import streamlit as st
 
 from src.config import CleaningOptions
 from src.database.connection import session
-from src.etl.cleaner import REJECTION_REASONS, clean_transactions
+from src.etl.cleaner import REJECTION_REASONS, SUPPORTED_CURRENCIES, clean_transactions
 from src.etl.loader import STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
 from src.etl.pipeline import import_dataframe, load_demo_dataset
 from src.etl.synthetic import DEFAULT_SEED, SYNTHETIC_LABEL, generate_demo_transactions
@@ -172,13 +172,16 @@ def _import_tab() -> None:
                                help="Invoices starting with this prefix followed by a digit are treated as returns.")
         drop_zero = c3.checkbox("Exclude zero-price lines", value=True, key=f"zero_{file_id}")
     options_obj = CleaningOptions(return_invoice_prefix=prefix.strip(), dayfirst=dayfirst, drop_zero_price=drop_zero)
+    currency = st.selectbox("File currency", [None, *SUPPORTED_CURRENCIES], key=f"currency_{file_id}",
+                            format_func=lambda c: c or "From the file", help="Needed when prices use a bare '$' "
+                            "(USD, CAD or AUD) and no Currency column is mapped.")
 
     st.subheader("3. Validate and import")
-    signature = (file_id, tuple(sorted((k, v or "") for k, v in mapping.items())), options_obj)
+    signature = (file_id, tuple(sorted((k, v or "") for k, v in mapping.items())), options_obj, currency)
     if st.button("Validate data", type="secondary", icon=":material/fact_check:"):
         try:
             with st.spinner("Validating..."):
-                result = clean_transactions(apply_mapping(raw, mapping), options_obj)
+                result = clean_transactions(apply_mapping(raw, mapping), options_obj, currency)
             st.session_state["_validation"] = {"sig": signature, "result": result}
         except ValueError as exc:
             st.error(str(exc))
@@ -216,7 +219,7 @@ def _import_tab() -> None:
         with st.spinner("Importing..."):
             with session(data.DB_PATH) as conn:
                 import_dataframe(conn, raw, mapping, source_name=cache["name"], is_synthetic=False,
-                                 options=options_obj)
+                                 options=options_obj, currency=currency)
         data.clear_caches()
         st.session_state.pop("_validation", None)
         st.session_state.pop("_upload", None)

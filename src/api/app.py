@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -30,7 +30,7 @@ from src.config import (DATA_DIR, DEFAULT_DB_PATH, PROJECT_ROOT, RISK_ORDER, SEG
 from src.database.backup import BACKUP_DIR, BackupError, backup_database
 from src.database.connection import data_version, date_bounds, session
 from src.etl.loader import MAX_UPLOAD_MB, STANDARD_FIELDS, apply_mapping, read_table, suggest_mapping
-from src.etl.cleaner import clean_transactions
+from src.etl.cleaner import DOLLAR_CURRENCIES, AmbiguousCurrency, clean_transactions, detect_currency
 from src.etl.pipeline import import_dataframe, load_demo_dataset
 from src.etl.synthetic import generate_demo_transactions
 from src.insights.engine import Insight
@@ -75,6 +75,9 @@ PAGE_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inl
 
 
 # --------------------------------------------------------------------------- serialisation
+PREVIEW_ROWS = 5
+
+
 def to_jsonable(obj: Any) -> Any:
     """Convert analytics results (DataFrames, numpy scalars, Insights ...) to plain JSON."""
     if isinstance(obj, pd.DataFrame):
@@ -440,9 +443,11 @@ def _router(writes: bool = True) -> APIRouter:
         return r
 
     @r.post("/import/preview")
-    def import_preview(request: Request, file: UploadFile = File(...)) -> Response:
+    def import_preview(request: Request, file: UploadFile = File(...),
+                       sheet: str | None = Form(None, max_length=31),  # Excel caps names at 31
+                       currency: str | None = Form(None, max_length=3)) -> Response:
         try:
-            raw = read_table(file.file.read(), filename=Path(file.filename or "").name)
+            raw = read_table(file.file.read(), filename=Path(file.filename or "").name, sheet=sheet or None)
         except Exception as exc:
             log.info("Upload rejected: %s", type(exc).__name__)
             raise HTTPException(400, f"Could not read file: {_safe_msg(exc)}") from None
@@ -454,9 +459,18 @@ def _router(writes: bool = True) -> APIRouter:
         uploads[upload_id] = (time.monotonic(), Path(file.filename or "upload").name, raw)
         _prune_uploads(uploads)
         payload = {"upload_id": upload_id, "filename": Path(file.filename or "").name, "rows": len(raw),
-                   "columns": [str(c) for c in raw.columns], "suggested_mapping": mapping}
+                   "columns": [str(c) for c in raw.columns], "suggested_mapping": mapping,
+                   "sample": raw.head(PREVIEW_ROWS),  # first rows as read, so the reader can check the mapping
+                   "sheets": raw.attrs.get("sheets", []), "sheet": raw.attrs.get("sheet"), "currency": currency or None}
         try:
-            result = clean_transactions(apply_mapping(raw, mapping))
+            mapped = apply_mapping(raw, mapping)
+            try:
+                detect_currency(mapped)
+            except AmbiguousCurrency:  # bare "$": the page asks which dollar, also after one was chosen
+                payload["currency_options"] = list(DOLLAR_CURRENCIES)
+            except ValueError:
+                pass  # mixed or unsupported currencies are reported by clean_transactions below
+            result = clean_transactions(mapped, currency=currency or None)
             payload["validation"] = _summary_payload(result)
         except ValueError as exc:
             payload["validation"] = {"error": _safe_msg(exc)}
@@ -472,14 +486,14 @@ def _router(writes: bool = True) -> APIRouter:
         _, filename, raw = entry
         options = CleaningOptions(**req.options.model_dump())
         with request.app.state.write_lock:
-            try:  # validate first so a bad mapping never triggers a backup or a write
-                apply_mapping(raw, req.mapping)
+            try:  # validate first so a bad mapping or mixed currencies never trigger a backup or a write
+                detect_currency(apply_mapping(raw, req.mapping), req.currency)
             except ValueError as exc:
                 raise HTTPException(422, _safe_msg(exc)) from None
             backup = _backup(request)
             with session(_db(request)) as conn:
                 result = import_dataframe(conn, raw, req.mapping, source_name=filename, is_synthetic=False,
-                                          options=options)
+                                          options=options, currency=req.currency)
             _write_done(request)
         payload = _summary_payload(result) | {"backup_created": backup, "imported": not result.clean.empty}
         if result.clean.empty:
@@ -520,7 +534,8 @@ def _download(data: bytes, media_type: str, ext: str, name: str = "report") -> R
 # zipfile ...) could describe library internals, so it is replaced by a fixed text.
 _OWN_MESSAGES = ("Unsupported file type", "The file is empty", "File exceeds", "A filename is required",
                  "Required fields are not mapped", "Each source column", "Mapped columns not found",
-                 "Excel workbook expands", "The file is not a valid Excel workbook")
+                 "Excel workbook expands", "The file is not a valid Excel workbook", "Sheet not found",
+                 "Mixed currencies", "Unsupported currency", "Currency conflict", "Prices use '$'")
 
 
 def _safe_msg(exc: Exception) -> str:

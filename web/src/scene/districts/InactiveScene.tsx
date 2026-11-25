@@ -3,7 +3,7 @@ import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { onDark } from '../../lib/palette'
 import { hash01, RISK_COLORS, RISK_ZONES, SEGMENTS } from '../../lib/domain'
-import { Label, lacquer, pointerCursor, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
+import { Label, lacquer, pointerCursor, secondTap, stagger, useDisposable, usePresence, useSceneEnv } from '../kit'
 import { setFocus, setHover, setPick, useDistrict, useFocus, useHover, usePick } from '../store'
 
 /**
@@ -142,6 +142,7 @@ export default function InactiveScene() {
     if (e.instanceId == null) return
     e.stopPropagation()
     const c = data.customers[e.instanceId]
+    if (!secondTap(c.id)) return
     setPick('inactive', c.id)
     setFocus('inactive', c.risk)
   }

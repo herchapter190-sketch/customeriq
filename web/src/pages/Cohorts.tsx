@@ -133,7 +133,7 @@ function AverageRetention({ avg, cohorts, horizon, slider, ring }: { avg: Retent
               endLabel
               height={280}
             />
-            <p className="muted small">Only cohorts old enough to be observed count at each month. Select a cohort in the matrix or the cohort-size chart to compare it with the average.</p>
+            <p className="muted small">Select a cohort to compare it with the average.</p>
           </div>
         )}
       </StandardOnly>
@@ -200,7 +200,7 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
             )}
           </div>
         ) : (
-          <p className="muted small">{standard ? 'Pick a cohort in the matrix or the cohort-size chart to read its retention month by month.' : 'Hover or click a ring in the scene, or pick a cohort in the matrix.'}</p>
+          <p className="muted small">{standard ? 'Select a cohort to see its retention.' : 'Hover or click a ring in the scene, or pick a cohort in the matrix.'}</p>
         )}
       </Section>
       )}
@@ -242,7 +242,7 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
       <CohortMatrix rings={rings} maxK={maxK} idx={idx} focus={typeof focus === 'number' ? focus : null} horizon={horizon} slider={slider} />
 
       <Section title="Month-over-month customer retention" aside={<CsvButton rows={mom} name="customeriq_monthly_retention.csv" />}>
-        <p className="muted small">Of the customers who ordered last month, the share who ordered again this month. A falling line means fewer regulars are coming back.</p>
+        <p className="muted small">Share of last month’s customers who ordered again.</p>
         <DataTable
           caption="Month-over-month retention"
           rows={mom}
@@ -333,10 +333,7 @@ function CohortMatrix({ rings, maxK, idx, focus, horizon, slider }: { rings: Coh
         </table>
       </div>
       <p className="heat-scale" aria-hidden="true">Fewer <span className="heat-scale__bar" /> More</p>
-      <p className="muted small">
-        Each row is the customers who first bought in that month (n). Moving right, each cell shows {metric === 'pct' ? 'the share' : 'how many'} who
-        bought again 1, 2, 3… months later; lighter means more came back. Blank cells are months not reached yet.
-      </p>
+      <p className="muted small">Rows: cohorts (n) · columns: months later · lighter = more returned · blank = not reached yet.</p>
       <Details summary="Methodology">
         <ul className="small">
           <li><strong>Cohort month</strong>: month of the customer’s first sales order across the entire dataset, so the date filter never re-assigns a customer to a later cohort.</li>

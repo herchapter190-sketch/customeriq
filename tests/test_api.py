@@ -8,6 +8,7 @@ import io
 import json
 import sqlite3
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -330,6 +331,7 @@ def test_import_preview_then_commit_with_verified_backup(client, db_path, tmp_pa
     assert p.status_code == 200, p.text
     prev = p.json()
     assert prev["rows"] == 11 and prev["suggested_mapping"]["customer_id"] == "Customer"
+    assert prev["sample"]["columns"] == prev["columns"] and len(prev["sample"]["data"]) == 5
     assert prev["validation"]["summary"]["clean_rows"] == 10
     assert _counts(db_path)["transactions"] == 9  # preview never writes
 
@@ -410,3 +412,49 @@ def test_clear_and_demo_require_confirm_and_back_up(client, db_path, tmp_path):
 def test_streamlit_registry_is_the_shared_one():
     from src.ui import data
     assert data.FUNCTIONS is registry.FUNCTIONS
+
+
+def test_import_excel_sheet_choice_and_mixed_currency_blocked(client, db_path, tmp_path):
+    buf = io.BytesIO()
+    frame = pd.read_csv(io.BytesIO(_csv()), dtype=str)
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        frame.head(2).to_excel(xw, sheet_name="Old", index=False)
+        frame.to_excel(xw, sheet_name="Sales", index=False)
+    xlsx = buf.getvalue()
+    ctype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    first = client.post("/api/import/preview", files={"file": ("b.xlsx", xlsx, ctype)}, headers=AUTH).json()
+    assert first["sheets"] == ["Old", "Sales"] and first["sheet"] == "Old" and first["rows"] == 2
+    chosen = client.post("/api/import/preview", files={"file": ("b.xlsx", xlsx, ctype)}, data={"sheet": "Sales"},
+                         headers=AUTH).json()
+    assert chosen["sheet"] == "Sales" and chosen["rows"] == len(frame)
+    bad = client.post("/api/import/preview", files={"file": ("b.xlsx", xlsx, ctype)}, data={"sheet": "Nope"},
+                      headers=AUTH)
+    assert bad.status_code == 400 and "Sheet not found" in bad.json()["detail"]
+
+    mixed = _csv().replace(b",10.0,", b",$10.0,", 1).replace(b",10.0,", ",\u20ac10.0,".encode(), 1)
+    prev = _preview(client, mixed).json()
+    assert prev["validation"]["error"].startswith("Mixed currencies")
+    before = _counts(db_path)
+    r = client.post("/api/import/commit", json={"upload_id": prev["upload_id"], "mapping": KNOWN_MAPPING,
+                                                "confirm": True}, headers=AUTH)
+    assert r.status_code == 422 and "Mixed currencies" in r.json()["detail"]
+    assert _counts(db_path) == before and not (tmp_path / "backups").exists()
+
+
+def test_import_bare_dollar_needs_a_chosen_currency(client, db_path):
+    dollars = _csv([r[:7] + (f"${r[7]}",) + r[8:] for r in KNOWN_ROWS])
+    prev = _preview(client, dollars).json()
+    assert prev["currency_options"] == ["USD", "CAD", "AUD"] and "USD, CAD or AUD" in prev["validation"]["error"]
+    body = {"upload_id": prev["upload_id"], "mapping": KNOWN_MAPPING, "confirm": True}
+    before = _counts(db_path)
+    r = client.post("/api/import/commit", json=body, headers=AUTH)
+    assert r.status_code == 422 and "Prices use '$'" in r.json()["detail"] and _counts(db_path) == before
+    assert client.post("/api/import/commit", json=body | {"currency": "XYZ"}, headers=AUTH).status_code == 422
+    # Choosing re-validates the preview and keeps the options so the choice can be changed.
+    chosen = client.post("/api/import/preview", files={"file": ("s.csv", dollars, "text/csv")},
+                         data={"currency": "CAD"}, headers=AUTH).json()
+    assert chosen["currency"] == "CAD" and chosen["currency_options"] and chosen["validation"]["summary"]
+    ok = client.post("/api/import/commit", json=body | {"upload_id": chosen["upload_id"], "currency": "CAD"},
+                     headers=AUTH)
+    assert ok.status_code == 200 and ok.json()["summary"]["currency"] == "CAD"
+    assert client.get("/api/dataset", headers=AUTH).json()["meta"]["currency"] == "CAD"

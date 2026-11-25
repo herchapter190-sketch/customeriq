@@ -5,17 +5,24 @@ import { useDataset } from '../lib/dataset'
 import { setViewMode, useViewMode } from '../lib/viewMode'
 import { ROUTES } from '../routes'
 
+/** Whether the analysis server answers. This is separate from demo vs local mode (see Nav's mode line). */
 const STATUS_LABEL = { checking: 'Connecting…', ready: 'API connected', 'signed-out': 'Not signed in', offline: 'API offline' }
+const STATUS_HELP = {
+  checking: 'Contacting the CustomerIQ analysis server.',
+  ready: 'The analysis server is up and answering. Every figure is calculated live from the loaded data.',
+  'signed-out': 'The server is up, but this browser has not signed in yet.',
+  offline: 'The analysis server is not answering, so no figures can be calculated right now.',
+}
 
 /** Standard Analytics ↔ 3D Exploration. */
 export function ModeSwitch() {
   const mode = useViewMode()
   return (
     <div className="mode-switch" role="group" aria-label="View mode">
-      <button type="button" aria-pressed={mode === 'standard'} onClick={() => setViewMode('standard')}>
+      <button type="button" aria-pressed={mode === 'standard'} onClick={() => setViewMode('standard')} title="Full analysis workspace: every chart, table, filter and export.">
         Standard
       </button>
-      <button type="button" aria-pressed={mode === '3d'} onClick={() => setViewMode('3d')} title="Optional immersive view; loads the 3D engine on first use.">
+      <button type="button" aria-pressed={mode === '3d'} onClick={() => setViewMode('3d')} title="A guided tour: one business question per stop, answered in an interactive 3D scene. Loads the 3D engine on first use.">
         3D Exploration
       </button>
     </div>
@@ -25,7 +32,7 @@ export function ModeSwitch() {
 export function Nav() {
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
-  const { status } = useSession()
+  const { status, demo } = useSession()
   const { motion, setMotion } = useDataset()
 
   useEffect(() => setOpen(false), [pathname])
@@ -64,6 +71,9 @@ export function Nav() {
         </Link>
         <p className="rail__tag">Customer intelligence</p>
         <ModeSwitch />
+        <NavLink to="/data#import" className="rail__import">
+          {demo ? 'How to import data' : 'Import data'}
+        </NavLink>
         <ol className="rail__list">
           {ROUTES.map((r, i) => {
             const heading = r.group !== group ? (group = r.group) : null
@@ -79,13 +89,26 @@ export function Nav() {
           })}
         </ol>
         <div className="rail__foot">
-          <button type="button" className="rail__motion" aria-pressed={motion} onClick={() => setMotion(!motion)} title="Turn off for less motion and a lighter 3D load on slow machines.">
+          <button
+            type="button"
+            className="rail__motion"
+            aria-pressed={motion}
+            onClick={() => setMotion(!motion)}
+            title="Moving charts and the animated 3D scene. Turn off for a calmer page or a slow computer. Your data is not affected."
+          >
             Animations {motion ? 'on' : 'off'}
           </button>
-          <p className={`rail__status is-${status}`} role="status">
+          <p className={`rail__status is-${status}`} role="status" title={STATUS_HELP[status]}>
             <span className="dot" aria-hidden="true" />
             {STATUS_LABEL[status]}
           </p>
+          {status === 'ready' && (
+            <p className="rail__mode" title={demo
+              ? 'This public demo uses generated sample data. Importing, loading and clearing data are turned off so no one can change it.'
+              : 'Running on your own computer: you can import, replace and clear your data. A backup is taken before every change.'}>
+              {demo ? 'Public demo · read-only' : 'Your workspace · import on'}
+            </p>
+          )}
         </div>
       </nav>
     </>

@@ -136,12 +136,11 @@ function InactiveBody({ data, customers, rules }: { data: Loaded; customers: Ina
           ))}
         </dl>
       </StandardOnly>
-      <SceneHint>Distance from the centre is days since the last order; rings are the zones. Brighter spheres are higher value, a rose ring marks overdue. Click to open a customer.</SceneHint>
+      <SceneHint>Distance = days since last order · brighter = higher value · rose ring = overdue. Click (or tap twice) to open.</SceneHint>
       <HoverReadout />
       <RiskEditor />
-      <p className="muted small">
-        Transparent rules, not a churn prediction model. Zones as of the end date: Active ≤ {rules.active_days} days, Cooling ≤ {rules.cooling_days}, At Risk ≤ {rules.at_risk_days},
-        Lapsed beyond. Overdue = a repeat customer inactive for more than {rules.overdue_multiplier}× their usual gap.
+      <p className="muted small" title="Transparent rules, not a churn prediction. Overdue = a repeat customer inactive for longer than this multiple of their usual gap.">
+        Active ≤ {rules.active_days} d · Cooling ≤ {rules.cooling_days} · At Risk ≤ {rules.at_risk_days} · Lapsed beyond · Overdue &gt; {rules.overdue_multiplier}× usual gap
       </p>
 
       <StdGrid>
@@ -178,7 +177,6 @@ function InactiveBody({ data, customers, rules }: { data: Loaded; customers: Ina
       </StdGrid>
 
       <Section title="Priority win-back list">
-        <p className="muted small">High-value customers who are At Risk or Lapsed, or overdue against their own rhythm, by lifetime revenue.</p>
         <DataTable caption="Priority win-back customers" rows={winBack} rowKey={(r) => `w-${r.customer_id}`} columns={columns} onRow={select} selected={pick ? `w-${pick}` : null} />
       </Section>
 

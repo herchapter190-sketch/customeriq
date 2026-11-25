@@ -197,6 +197,18 @@ export const stagger = (p: number, i: number, n: number, spread = 0.55) =>
 export const damp = (current: number, target: number, lambda: number, dt: number) =>
   THREE.MathUtils.damp(current, target, lambda, dt)
 
+let lastPointer = 'mouse'
+addEventListener('pointerdown', (e) => void (lastPointer = e.pointerType), { capture: true, passive: true })
+let armed: unknown = null
+/** Touch has no hover: the first tap on an object only reads it (Stage turns taps into hovers); a second tap on the same object opens it. */
+export const secondTap = (id: unknown) => {
+  if (lastPointer !== 'touch') return true
+  const again = armed === id
+  armed = again ? null : id
+  return again
+}
+export const disarm = () => void (armed = null)
+
 /** Cursor feedback for interactive meshes. */
 export const pointerCursor = (on: boolean) => {
   document.body.style.cursor = on ? 'pointer' : ''
