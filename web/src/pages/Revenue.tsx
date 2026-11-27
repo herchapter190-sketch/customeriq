@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import { rows } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
-import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, SearchBox, searchRows, Section, StandardOnly, TabPanel, Tabs, Takeaway, ThreeDOnly } from '../components/ui'
+import { BarList, CsvButton, DatasetGate, DataTable, FilterBar, Figures, PageHead, SceneHint, SearchBox, searchRows, Section, StandardOnly, TabPanel, Tabs, ThreeDOnly } from '../components/ui'
 import { CategoryChart, CurveChart, Panel, shortMonth } from '../components/charts'
 import { SERIES } from '../lib/palette'
 import { useDataset } from '../lib/dataset'
@@ -119,7 +119,6 @@ function RevenueBody({ data }: { data: Loaded }) {
   return (
     <>
       <TrendSummary months={months} />
-      <Takeaway categories={['Revenue', 'Products']} />
       <Tabs tabs={TABS} value={tab} onChange={setTab} label="Revenue views" />
       {tab === 'trend' && (
         <TabPanel id="trend">
@@ -138,7 +137,6 @@ function RevenueBody({ data }: { data: Loaded }) {
             <TrendCharts months={months} metric={metric} />
           </StandardOnly>
           <Section title="Every month" aside={<CsvButton rows={months} name="customeriq_monthly_revenue.csv" />}>
-            <p className="muted small">Net = gross sales − returns.</p>
             <DataTable
               caption="Monthly revenue"
               rows={months}
@@ -299,7 +297,7 @@ function Drivers({ data }: { data: Loaded }) {
           <Panel title="Gini coefficient" note="0 = every customer spends the same; 1 = one customer generates all revenue.">
             <p className="hero-num">{gini != null ? gini.toFixed(2) : 'n/a'}</p>
             <p className="muted small">
-              {gini == null ? 'Not enough customers with positive revenue to calculate.' : gini >= 0.6 ? 'Highly concentrated: a small group of customers carries most of the revenue.' : gini >= 0.4 ? 'Moderately concentrated revenue.' : 'Revenue is spread fairly evenly across customers.'}
+              {gini == null ? 'Too few customers to calculate.' : gini >= 0.6 ? 'Highly concentrated' : gini >= 0.4 ? 'Moderately concentrated' : 'Evenly spread'}
             </p>
           </Panel>
         </div>

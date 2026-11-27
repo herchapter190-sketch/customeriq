@@ -143,8 +143,9 @@ select:focus-visible,
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+/* options follow the surface they open from (white in Standard, maroon in 3D) */
 select option {
-  background: var(--sidebar);
+  background: var(--card);
   color: var(--ink);
 }
 input[type='range'] {
@@ -165,11 +166,21 @@ input[type='range'] {
   color: var(--ink);
   border-color: rgb(var(--rose-rgb) / 0.45);
 }
-.chip[aria-expanded='true'],
+/* an open menu trigger is "active", not "selected": outline only, no fill */
+.chip[aria-expanded='true'] {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .chip[aria-pressed='true'] {
   color: var(--ink);
   background: var(--burgundy);
   border-color: var(--rose);
+}
+.chip__count {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
 }
 .chips {
   display: flex;
@@ -233,7 +244,6 @@ input[type='range'] {
   font: 400 var(--fs-sm) var(--sans);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  color-scheme: dark;
   background: var(--inset);
   border: 1px solid var(--rule-strong);
   border-radius: 8px;
@@ -598,7 +608,7 @@ html[data-mode='3d'] .section {
   pointer-events: none;
   font-size: var(--fs-xs);
   color: var(--ink);
-  background: var(--sidebar);
+  background: var(--elev);
   border: 1px solid var(--rule-strong);
   border-radius: 9px;
   box-shadow: 0 12px 28px -10px rgb(var(--shadow-rgb) / 0.8);
@@ -1074,10 +1084,6 @@ html[data-mode='3d'] .figures__item {
   font: 600 var(--fs-sm) / 1.3 var(--sans);
   color: var(--ink);
 }
-.seg-card__desc {
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-}
 .seg-card__nums {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1359,45 +1365,242 @@ html[data-mode='3d'] .figures__item {
   margin-top: 12px;
 }
 .takeaway {
-  position: relative;
   margin: 22px 0 0;
-  padding: 14px 18px 14px 18px;
+}
+/* findings: badge | finding + why | evidence figures | "i" (observation + next step) */
+.signals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.signal {
+  --k: var(--ink-3);
+  position: relative;
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 14px 16px;
   background: var(--card);
   border: 1px solid var(--rule);
-  border-left: 3px solid var(--beige);
   border-radius: var(--r);
 }
-.takeaway.is-risk {
-  border-left-color: var(--neg);
+html[data-mode='3d'] .signal {
+  background: rgb(var(--card-rgb) / 0.82);
 }
-.takeaway.is-info {
-  border-left-color: var(--ink-3);
+/* the palette is one hue, so kind reads from the ▼/▲ badge plus a faint tint: rose for risk, neutral for opportunity */
+.signal.is-risk {
+  --k: var(--neg);
+  background: linear-gradient(90deg, rgb(var(--neg-rgb) / 0.09), transparent 45%), var(--card);
 }
-.takeaway__meta {
-  margin: 0;
-  font-size: 0.7rem;
+html[data-mode='3d'] .signal.is-risk {
+  background: linear-gradient(90deg, rgb(var(--neg-rgb) / 0.12), transparent 45%), rgb(var(--card-rgb) / 0.82);
+}
+.signal.is-opportunity {
+  --k: var(--pos);
+  background: linear-gradient(90deg, rgb(var(--ink-rgb) / 0.05), transparent 45%), var(--card);
+}
+html[data-mode='3d'] .signal.is-opportunity {
+  background: linear-gradient(90deg, rgb(var(--ink-rgb) / 0.07), transparent 45%), rgb(var(--card-rgb) / 0.82);
+}
+.signal__kind {
+  display: grid;
+  gap: 3px;
+  font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.1em;
+  color: var(--k);
+  cursor: help;
+}
+.signal__kind small {
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.takeaway__title {
-  margin: 5px 0 0;
-  font: 450 1.08rem/1.35 var(--serif);
+.signal__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.signal__title {
+  font: 450 1.02rem / 1.3 var(--serif);
   color: var(--ink);
 }
-.takeaway__action {
-  margin: 6px 0 0;
-  font-size: var(--fs-sm);
+.signal__why {
+  font-size: var(--fs-xs);
+  line-height: 1.45;
   color: var(--ink-2);
 }
-.takeaway__action span {
-  margin-right: 6px;
+.signal__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 18px;
+  max-width: 340px;
+}
+.signal__fig {
+  display: grid;
+  justify-items: end;
+  text-align: right;
+}
+.signal__fig b {
+  font: 600 var(--fs-md) / 1.2 var(--sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.signal__fig small {
   font-size: 0.7rem;
+  color: var(--ink-3);
+}
+.signal .info {
+  margin-left: 0;
+}
+.signal .info::after {
+  left: auto;
+  right: 0;
+  width: min(360px, 80vw);
+  max-width: none;
+}
+.signal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: -4px 0 12px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+.signal-legend__item > span {
+  color: var(--ink-3);
+}
+.signal-legend__item.is-risk > span {
+  color: var(--neg);
+}
+.signal-legend__item.is-opportunity > span {
+  color: var(--pos);
+}
+.signal-legend__item b {
+  color: var(--ink-2);
   font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--rose-l);
+}
+@media (max-width: 760px) {
+  .signal {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'kind info' 'body body' 'metrics metrics';
+  }
+  .signal__kind {
+    grid-area: kind;
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .signal .info {
+    grid-area: info;
+  }
+  .signal__body {
+    grid-area: body;
+  }
+  .signal__metrics {
+    grid-area: metrics;
+    justify-content: flex-start;
+    max-width: none;
+  }
+  .signal__fig {
+    justify-items: start;
+    text-align: left;
+  }
+}
+/* the 3D panel is ~460px wide at any viewport, so stack rows by the list's own width there (Standard has no container) */
+html[data-mode='3d'] .signals {
+  container-type: inline-size;
+}
+@container (max-width: 600px) {
+  .signal {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'kind info' 'body body' 'metrics metrics';
+  }
+  .signal__kind {
+    grid-area: kind;
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .signal .info {
+    grid-area: info;
+  }
+  .signal__body {
+    grid-area: body;
+  }
+  .signal__metrics {
+    grid-area: metrics;
+    justify-content: flex-start;
+    max-width: none;
+  }
+  .signal__fig {
+    justify-items: start;
+    text-align: left;
+  }
+}
+/* Segments: R / F / M -> segment key */
+.score-key {
+  margin: 22px 0 6px;
+}
+.score-key__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin: 12px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.score-key__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r);
+}
+html[data-mode='3d'] .score-key__item {
+  background: rgb(var(--card-rgb) / 0.82);
+}
+.score-key__item--out {
+  border-style: dashed;
+  cursor: help;
+}
+.score-key__letter {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font: 600 1rem / 1 var(--serif);
+  color: var(--accent);
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+}
+.score-key__item b {
+  color: var(--ink);
+}
+.score-key__item small {
+  font-size: 0.7rem;
+  color: var(--ink-3);
+}
+.score-key__what,
+.score-key__top {
+  display: block;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.score-key__top {
+  margin-top: 2px;
+  color: var(--ink-3);
 }
 .lede--sm {
   max-width: 80ch;
@@ -1506,6 +1709,13 @@ html[data-mode='3d'] .figures__item {
   font: 400 0.72rem/1.35 var(--sans);
   color: var(--ink-3);
 }
+.sql-index button small.sql-index__file,
+.sql-file {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--ink-3);
+}
 .sql-index button:hover {
   color: var(--ink);
   background: rgb(var(--ink-rgb) / 0.04);
@@ -1559,7 +1769,7 @@ html[data-mode='standard'] .sql-columns > nav {
   font: 400 0.8rem/1.6 var(--mono);
   color: var(--ink);
   white-space: pre;
-  background: var(--sidebar);
+  background: var(--inset);
   border: 1px solid var(--rule);
   border-radius: var(--r);
   tab-size: 2;
@@ -1745,43 +1955,6 @@ html[data-mode='3d'] .exports {
   font-size: var(--fs-md);
   line-height: 1.5;
   color: var(--ink-2);
-}
-.intro__steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
-  margin: 14px 0 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-}
-.intro__steps li {
-  counter-increment: step;
-}
-.intro__steps a {
-  display: block;
-  height: 100%;
-  padding: 10px 12px;
-  font-size: var(--fs-xs);
-  line-height: 1.4;
-  color: var(--ink-2);
-  text-decoration: none;
-  background: rgb(var(--card-rgb) / 0.55);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  transition: border-color 180ms var(--ease);
-}
-.intro__steps a::before {
-  content: counter(step) ' · ';
-  font-weight: 600;
-  color: var(--rose-l);
-}
-.intro__steps a:hover,
-.intro__steps a:focus-visible {
-  border-color: var(--rule-strong);
-}
-.intro__steps b {
-  color: var(--ink);
 }
 .tour-q {
   margin: 0 0 18px;

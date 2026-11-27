@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, saveBlob } from '../api/client'
 import type { Insight } from '../api/types'
 import { ErrorPanel, Loading, SessionGate } from '../components/Status'
-import { DatasetGate, FilterBar, PageHead, SceneHint, Section } from '../components/ui'
+import { DatasetGate, FilterBar, PageHead, SceneHint, Section, Signal } from '../components/ui'
 import { toCsv } from '../lib/csv'
 import { useDataset } from '../lib/dataset'
 import { CSV_LABELS } from '../lib/domain'
@@ -19,7 +19,7 @@ const KINDS = [
   { id: 'all', label: 'All' },
   { id: 'risk', label: 'Risks' },
   { id: 'opportunity', label: 'Opportunities' },
-  { id: 'info', label: 'Information' },
+  { id: 'info', label: 'Notes' },
 ] as const
 type Exp = 'pdf' | 'xlsx' | 'csv'
 
@@ -84,12 +84,7 @@ function ReportsBody() {
         <article className="export" {...hoverProps('pdf')}>
           <span className="export__format" style={{ ['--c' as string]: '#6E1530' }}>PDF</span>
           <h3>Executive report</h3>
-          <p>A presentation-ready summary of the selected period, with charts and page numbers.</p>
-          <ul>
-            <li>Executive summary and headline KPIs</li>
-            <li>Revenue, RFM segmentation and cohort retention</li>
-            <li>Inactive customers, findings and recommendations</li>
-          </ul>
+          <p>KPIs, revenue, segments, cohorts, win-backs and findings, with charts.</p>
           <div className="actions">
             <button type="button" className="btn btn--solid" disabled={busy !== null} onClick={() => make('pdf')}>
               {busy === 'pdf' ? 'Building…' : 'Download PDF'}
@@ -100,12 +95,7 @@ function ReportsBody() {
         <article className="export" {...hoverProps('xlsx')}>
           <span className="export__format" style={{ ['--c' as string]: '#A8334F' }}>XLSX</span>
           <h3>Excel workbook</h3>
-          <p>Every analysis as its own sheet for further work. Text cells are formula-safe.</p>
-          <ul>
-            <li>KPIs, segments and RFM customers</li>
-            <li>Colour-scaled cohort matrix and products</li>
-            <li>Inactive customers and insights</li>
-          </ul>
+          <p>Every analysis as its own sheet. Formula-safe.</p>
           <div className="actions">
             <button type="button" className="btn" disabled={busy !== null} onClick={() => make('xlsx')}>
               {busy === 'xlsx' ? 'Building…' : 'Download workbook'}
@@ -116,11 +106,7 @@ function ReportsBody() {
         <article className="export" {...hoverProps('csv')}>
           <span className="export__format" style={{ ['--c' as string]: '#D27A8B' }}>CSV</span>
           <h3>Table extract</h3>
-          <p>Any single analytical table as a formula-safe CSV, for spreadsheets or other tools.</p>
-          <ul>
-            <li>{csvNames.length} tables available, filtered like this page</li>
-            <li>One row per record, raw values (no formatting)</li>
-          </ul>
+          <p>{csvNames.length} tables, raw values, filtered like this page.</p>
           <div className="actions">
             <select aria-label="CSV table" value={csv} onChange={(e) => setCsv(Number(e.target.value))}>
               {csvNames.map((n, i) => (
@@ -136,7 +122,8 @@ function ReportsBody() {
       </div>
 
       <Section
-        title="Business findings"
+        title="What your report will say"
+        note="These findings are written into the PDF and Excel exports above, so check them before you download. Overview shows only the top few; this is the full list for the current filters."
         aside={
           findings.length > 0 && (
             <button
@@ -160,7 +147,7 @@ function ReportsBody() {
         <div className="chips" role="group" aria-label="Finding type" style={{ marginTop: 14 }}>
           {KINDS.map((k) => (
             <button key={k.id} type="button" className="chip" aria-pressed={kind === k.id} onClick={() => setKind(k.id)}>
-              {k.label}
+              {k.label} {insights.state === 'done' && <span className="chip__count">{k.id === 'all' ? findings.length : findings.filter((f) => f.kind === k.id).length}</span>}
             </button>
           ))}
         </div>
@@ -181,26 +168,16 @@ function FindingsList({ list, all }: { list: Insight[]; all: Insight[] }) {
   if (!list.length) return <p className="muted">No findings of this type for the current selection.</p>
   const hot = typeof hover === 'number' && scene ? all[hover] : null
   return (
-    <ol className="insights__list" style={{ marginTop: 14 }}>
+    <ul className="signals" style={{ marginTop: 14 }}>
       {list.map((ins) => (
-        <li
+        <Signal
           key={ins.key}
-          className={`insight is-${ins.kind}`}
+          ins={ins}
           style={hot?.key === ins.key ? { background: 'var(--elev)' } : undefined}
           onMouseEnter={() => setHover('reports', all.indexOf(ins))}
           onMouseLeave={() => setHover('reports', null)}
-        >
-          <span className="insight__num">{String(all.indexOf(ins) + 1).padStart(2, '0')}</span>
-          <div>
-            <p className="insight__meta">{ins.category} · {ins.kind}</p>
-            <h3 className="insight__title">{ins.title}</h3>
-            <p className="insight__obs">{ins.observation}</p>
-            <p className="insight__obs"><strong>{ins.metric}</strong></p>
-            <p className="insight__obs">{ins.why_it_matters}</p>
-            <p className="insight__action"><span>Action</span> {ins.action}</p>
-          </div>
-        </li>
+        />
       ))}
-    </ol>
+    </ul>
   )
 }

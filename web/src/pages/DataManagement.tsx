@@ -139,7 +139,7 @@ function DataBody({ readOnly = false }: { readOnly?: boolean }) {
           const cur = STEP_OF[stage]
           const cls = stage === 'failed' && i === 4 ? 'is-failed' : i < cur ? 'is-done' : i === cur ? 'is-current' : ''
           return (
-            <li key={s} className={cls} aria-current={i === cur ? 'step' : undefined}>
+            <li key={s} className={cls} aria-current={i === cur ? 'step' : undefined} title={STEP_HELP[s]}>
               {s}
             </li>
           )
@@ -543,7 +543,7 @@ function CurrentTab({ readOnly = false }: { readOnly?: boolean }) {
           {meta.warnings?.length ? <ul className="warnlist">{meta.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : <p className="muted small">No warnings.</p>}
         </Section>
       )}
-      <Section title="Rejected rows · first 100">
+      <Section title="Rejected rows · first 100" note="Rows the importer could not use, with the rule that excluded them. They are kept for review but never analysed. Original values = the row exactly as it was in the file.">
         {rejected.state === 'loading' && <Loading label="Reading rejected rows" />}
         {rejected.state === 'error' && <ErrorPanel error={rejected.error} onRetry={reload} />}
         {rejected.state === 'done' &&
@@ -554,13 +554,13 @@ function CurrentTab({ readOnly = false }: { readOnly?: boolean }) {
               rowKey={(r) => `${r.source_row}-${r.reason}`}
               maxHeight={300}
               columns={[
-                { key: 'row', label: 'Source row', render: (r) => r.source_row, numeric: true },
-                { key: 'reason', label: 'Rule', render: (r) => REJECTION_REASONS[r.reason] ?? r.reason },
-                { key: 'raw', label: 'Original values', render: (r) => <code className="small">{String(r.raw).slice(0, 120)}</code> },
+                { key: 'row', label: 'Row in file', render: (r) => r.source_row, numeric: true },
+                { key: 'reason', label: 'Why rejected', render: (r) => REJECTION_REASONS[r.reason] ?? r.reason },
+                { key: 'raw', label: 'Original values (as in file)', render: (r) => <code className="small">{String(r.raw).slice(0, 120)}</code> },
               ]}
             />
           ) : (
-            <p className="muted small">None.</p>
+            <p className="muted small">None: every row was usable.</p>
           ))}
       </Section>
       {!readOnly && <Section title="Clear dataset">

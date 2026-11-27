@@ -67,7 +67,7 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
   const matches = (name: string) => {
     const d = SQL_DOCS[name]
     if (fams.length && !fams.includes(d?.family ?? 'Dataset')) return false
-    return !needle || [name, d?.purpose, d?.techniques].some((t) => (t ?? '').toLowerCase().includes(needle))
+    return !needle || [name, d?.title, d?.purpose, d?.techniques].some((t) => (t ?? '').toLowerCase().includes(needle))
   }
   const visible = queries.filter((x) => matches(x.name))
   const [run, setRun] = useState<{ name: string; key: string; result?: SqlResult; error?: unknown; busy: boolean } | null>(null)
@@ -122,9 +122,9 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
                 <ul className="sql-index">
                   {items.map((x) => (
                     <li key={x.name}>
-                      <button type="button" aria-current={x.name === q.name} onClick={() => setFocus('sql', x.name)}>
-                        {x.name}
-                        {SQL_DOCS[x.name] && <small>{SQL_DOCS[x.name].purpose}</small>}
+                      <button type="button" aria-current={x.name === q.name} title={SQL_DOCS[x.name]?.purpose} onClick={() => setFocus('sql', x.name)}>
+                        {SQL_DOCS[x.name]?.title ?? x.name}
+                        <small className="sql-index__file">{x.name}</small>
                       </button>
                     </li>
                   ))}
@@ -142,7 +142,9 @@ function SqlBody({ queries }: { queries: { name: string; sql?: string }[] }) {
           <p className="tag">
             <span className="seg-dot" style={{ background: SQL_FAMILY_COLORS[doc?.family ?? 'Dataset'] }} aria-hidden="true" /> {doc?.family ?? 'Dataset'}
           </p>
-          <h2 className="profile__title" style={{ fontSize: '1.25rem', marginTop: 10 }}>{q.name}</h2>
+          <h2 className="profile__title" style={{ fontSize: '1.25rem', marginTop: 10 }}>
+            {doc?.title ?? q.name} <code className="sql-file">{q.name}.sql</code>
+          </h2>
           <dl className="doc-list">
             <dt>Purpose</dt>
             <dd>{doc?.purpose ?? 'Documented in the query file header.'}</dd>

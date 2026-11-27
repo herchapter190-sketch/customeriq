@@ -4,7 +4,7 @@ import { rows } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
 import { RfmEditor } from '../components/RuleEditors'
 import { BarList, CsvButton, DatasetGate, DataTable, Details, FilterBar, Figures, PageHead, Pills, SceneHint, SearchBox, searchRows, Section, StandardOnly, Takeaway, ThreeDOnly } from '../components/ui'
-import { Panel } from '../components/charts'
+import { Info, Panel } from '../components/charts'
 import { heat } from '../lib/palette'
 import { useDataset } from '../lib/dataset'
 import { segmentColor, SEGMENTS } from '../lib/domain'
@@ -140,6 +140,7 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
         As of <strong>{fmtDate(end)}</strong>
       </p>
       </StandardOnly>
+      <ScoreKey fixed={rules.rfm?.method === 'fixed'} />
       <RfmEditor />
 
       <StandardOnly>
@@ -177,7 +178,7 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
             />
           </Panel>
         </div>
-        <Section title="Segment profiles">
+        <Section title="Segment profiles" note="Hover a card for what the segment means. Select one for its full profile and suggested action.">
           <div className="seg-cards">
             {summary.map((s) => (
               <button
@@ -186,10 +187,10 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
                 className="seg-card"
                 style={{ ['--c' as string]: segmentColor(s.segment) }}
                 aria-pressed={focus === s.segment}
+                title={SEGMENTS[s.segment]?.description}
                 onClick={() => selectSeg(s.segment)}
               >
                 <span className="seg-card__name">{s.segment}</span>
-                <span className="seg-card__desc">{SEGMENTS[s.segment]?.description}</span>
                 <span className="seg-card__nums">
                   <span><b>{fmtWhole(s.customers)}</b>customers</span>
                   <span><b>{fmtPct(s.revenue_share_pct)}</b>of revenue</span>
@@ -232,7 +233,7 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
 
       {selected && <SegmentProfile seg={selected} />}
 
-      <Section title="Customers by recency × frequency score">
+      <Section title="Customer buy frequency × recency" note="Customers per cell. R5 = bought most recently, F5 = buys most often. Hover a cell for its revenue.">
         <RfmGrid grid={grid} />
       </Section>
 
@@ -249,25 +250,74 @@ function SegmentsBody({ summary, customers, grid }: { summary: SegRow[]; custome
   )
 }
 
+const SCORES = [
+  { k: 'R', name: 'Recency', what: 'How recently they last bought', top: '5 = bought most recently' },
+  { k: 'F', name: 'Frequency', what: 'How many separate orders', top: '5 = orders most often' },
+  { k: 'M', name: 'Monetary', what: 'How much they spent, after returns', top: '5 = spends the most' },
+]
+
+/** What the R/F/M scores are and how they become a segment. Wording only; scoring lives in src/segments/rfm.py. */
+function ScoreKey({ fixed }: { fixed: boolean }) {
+  const basis = fixed
+    ? 'Scores use the fixed cut points in Scoring rules below.'
+    : 'Scores compare each customer with the rest of your customers: 5 is roughly the top fifth, 1 the bottom fifth.'
+  return (
+    <section className="score-key" aria-labelledby="score-key-h">
+      <h2 id="score-key-h" className="section-title">
+        How customers are scored
+        <Info text={`Every customer gets three scores from 1 to 5, and higher is always better for the business. ${basis} A code like 545 means R5 F4 M5. The scores describe past buying, they are not predictions.`} />
+      </h2>
+      <ol className="score-key__row">
+        {SCORES.map((s) => (
+          <li key={s.k} className="score-key__item">
+            <span className="score-key__letter" aria-hidden="true">{s.k}</span>
+            <span>
+              <b>{s.name}</b> <small>1–5</small>
+              <span className="score-key__what">{s.what}</span>
+              <span className="score-key__top">{s.top}</span>
+            </span>
+          </li>
+        ))}
+        <li className="score-key__item score-key__item--out" title="Rules are checked in order and the first match wins. Open 'Segment definitions' further down for the full table.">
+          <span className="score-key__letter" aria-hidden="true">→</span>
+          <span>
+            <b>Segment</b>
+            <span className="score-key__what">The three scores combined by fixed rules</span>
+            <span className="score-key__top">e.g. high R and high F+M = Champions</span>
+          </span>
+        </li>
+      </ol>
+      <p className="muted small">Use it to decide who to reward, who to nurture and who to win back: recent, frequent, high spenders are worth protecting; high spenders with low recency are slipping away.</p>
+    </section>
+  )
+}
+
 function SegmentProfile({ seg }: { seg: SegRow }) {
   const doc = SEGMENTS[seg.segment]
   return (
     <section className="profile" aria-live="polite" style={{ ['--accent' as string]: segmentColor(seg.segment) }}>
       <h2 className="profile__title">{seg.segment}</h2>
       {doc && <p className="profile__desc">{doc.description}</p>}
+      <BarList
+        max={100}
+        items={[
+          { key: 'c', label: 'Share of customers', value: seg.customer_share_pct, display: fmtPct(seg.customer_share_pct), color: 'var(--ink-3)' },
+          { key: 'r', label: 'Share of revenue', value: seg.revenue_share_pct, display: fmtPct(seg.revenue_share_pct), color: segmentColor(seg.segment) },
+        ]}
+      />
       <Figures
         items={[
-          { label: 'Customers', value: fmtWhole(seg.customers), note: `${fmtPct(seg.customer_share_pct)} of customers` },
-          { label: 'Net revenue', value: fmtMoneyCompact(seg.net_revenue), note: `${fmtPct(seg.revenue_share_pct)} of revenue` },
-          { label: 'Days since last order', value: fmtWhole(seg.avg_recency_days), note: 'segment average' },
-          { label: 'Orders per customer', value: seg.avg_frequency.toFixed(1), note: 'segment average' },
+          { label: 'Customers', value: fmtWhole(seg.customers) },
+          { label: 'Net revenue', value: fmtMoneyCompact(seg.net_revenue) },
+          { label: 'Avg days since last order', value: fmtWhole(seg.avg_recency_days) },
+          { label: 'Avg orders per customer', value: seg.avg_frequency.toFixed(1) },
           { label: 'Spend per customer', value: fmtMoney(seg.avg_monetary) },
           { label: 'Average order', value: fmtMoney(seg.avg_order_value) },
         ]}
       />
       {doc?.action && (
         <p className="profile__action">
-          <span>Suggested approach</span> {doc.action}
+          <span>Action</span> {doc.action}
         </p>
       )}
     </section>
@@ -307,7 +357,6 @@ function RfmGrid({ grid }: { grid: GridRow[] }) {
         </tbody>
       </table>
       <p className="heat-scale" aria-hidden="true">Fewer <span className="heat-scale__bar" /> More customers</p>
-      <p className="muted small">Cells: customers · hover for revenue.</p>
     </div>
   )
 }
@@ -351,7 +400,7 @@ const TABLE_CAP = 500
 
 function GroupProfile({ summary }: { summary: SegRow[] }) {
   return (
-    <Section title="Group profile" aside={<CsvButton rows={summary} name="customeriq_segment_summary.csv" />}>
+    <Section title="Group profile" note="Averages are per customer in the segment." aside={<CsvButton rows={summary} name="customeriq_segment_summary.csv" />}>
       <DataTable
         caption="Segment profile"
         rows={summary}
@@ -371,9 +420,9 @@ function GroupProfile({ summary }: { summary: SegRow[] }) {
           { key: 'cs', label: 'Customer %', render: (r) => fmtPct(r.customer_share_pct), numeric: true },
           { key: 'n', label: 'Net revenue', render: (r) => fmtMoney(r.net_revenue), numeric: true },
           { key: 'rs', label: 'Revenue %', render: (r) => fmtPct(r.revenue_share_pct), numeric: true },
-          { key: 'rd', label: 'Avg recency (days)', render: (r) => fmtWhole(r.avg_recency_days), numeric: true },
-          { key: 'f', label: 'Avg orders', render: (r) => r.avg_frequency.toFixed(1), numeric: true },
-          { key: 'm', label: 'Avg monetary', render: (r) => fmtMoney(r.avg_monetary), numeric: true },
+          { key: 'rd', label: 'Days since order', render: (r) => fmtWhole(r.avg_recency_days), numeric: true },
+          { key: 'f', label: 'Orders', render: (r) => r.avg_frequency.toFixed(1), numeric: true },
+          { key: 'm', label: 'Spend', render: (r) => fmtMoney(r.avg_monetary), numeric: true },
           { key: 'a', label: 'Avg order', render: (r) => fmtMoney(r.avg_order_value), numeric: true },
         ]}
       />
@@ -387,10 +436,10 @@ function GroupProfile({ summary }: { summary: SegRow[] }) {
           columns={[
             { key: 'p', label: '#', render: (r) => RULES.indexOf(r) + 1, numeric: true },
             { key: 's', label: 'Segment', render: (r) => r[0] },
-            { key: 'r', label: 'R', render: (r) => r[1] },
-            { key: 'f', label: 'F', render: (r) => r[2] },
-            { key: 'm', label: 'M', render: (r) => r[3] },
-            { key: 'fm', label: 'FM', render: (r) => r[4] },
+            { key: 'r', label: 'R', render: (r) => r[1], tip: 'Recency score needed (5 = bought most recently)' },
+            { key: 'f', label: 'F', render: (r) => r[2], tip: 'Frequency score needed (5 = orders most often)' },
+            { key: 'm', label: 'M', render: (r) => r[3], tip: 'Monetary score needed (5 = spends the most)' },
+            { key: 'fm', label: 'FM', render: (r) => r[4], tip: 'Combined frequency + monetary score needed' },
             { key: 'd', label: 'Description', render: (r) => SEGMENTS[r[0]]?.description },
             { key: 'a', label: 'Suggested action', render: (r) => SEGMENTS[r[0]]?.action || 'Review rule coverage.' },
           ]}
@@ -432,8 +481,8 @@ function Explorer({ customers, focus, pick }: { customers: RfmRow[]; focus: stri
           { key: 'id', label: 'Customer', render: (r) => r.customer_id },
           { key: 'c', label: 'Country', render: (r) => r.country },
           { key: 'seg', label: 'Segment', render: (r) => r.segment },
-          { key: 'rfm', label: 'RFM', render: (r) => r.rfm_code, numeric: true },
-          { key: 'fm', label: 'FM', render: (r) => r.fm_score, numeric: true },
+          { key: 'rfm', label: 'RFM', render: (r) => r.rfm_code, numeric: true, tip: 'Recency, Frequency and Monetary scores (1–5 each). 545 = R5 F4 M5; higher is better.' },
+          { key: 'fm', label: 'FM', render: (r) => r.fm_score, numeric: true, tip: 'Frequency and Monetary combined into one 1–5 score: (F + M + 1) / 2, rounded down. Used by the segment rules.' },
           { key: 'last', label: 'Last purchase', render: (r) => fmtDate(r.last_purchase) },
           { key: 'r', label: 'Recency (days)', render: (r) => fmtWhole(r.recency_days), numeric: true },
           { key: 'f', label: 'Orders', render: (r) => fmtWhole(r.frequency), numeric: true },

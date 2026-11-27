@@ -4,14 +4,15 @@ import { useSession } from '../api/session'
 import { useDataset } from '../lib/dataset'
 import { setViewMode, useViewMode } from '../lib/viewMode'
 import { ROUTES } from '../routes'
+import { Info } from './charts'
 
 /** Whether the analysis server answers. This is separate from demo vs local mode (see Nav's mode line). */
 const STATUS_LABEL = { checking: 'Connecting…', ready: 'API connected', 'signed-out': 'Not signed in', offline: 'API offline' }
 const STATUS_HELP = {
-  checking: 'Contacting the CustomerIQ analysis server.',
-  ready: 'The analysis server is up and answering. Every figure is calculated live from the loaded data.',
-  'signed-out': 'The server is up, but this browser has not signed in yet.',
-  offline: 'The analysis server is not answering, so no figures can be calculated right now.',
+  checking: 'Contacting the analysis server.',
+  ready: 'This page is connected to its analysis server; figures are calculated live.',
+  'signed-out': 'Server is up; this browser is not signed in.',
+  offline: 'Analysis server not answering; figures cannot be calculated.',
 }
 
 /** Standard Analytics ↔ 3D Exploration. */
@@ -71,9 +72,11 @@ export function Nav() {
         </Link>
         <p className="rail__tag">Customer intelligence</p>
         <ModeSwitch />
-        <NavLink to="/data#import" className="rail__import">
-          {demo ? 'How to import data' : 'Import data'}
-        </NavLink>
+        {!demo && (
+          <NavLink to="/data#import" className="rail__import">
+            Import data
+          </NavLink>
+        )}
         <ol className="rail__list">
           {ROUTES.map((r, i) => {
             const heading = r.group !== group ? (group = r.group) : null
@@ -98,13 +101,14 @@ export function Nav() {
           >
             Animations {motion ? 'on' : 'off'}
           </button>
-          <p className={`rail__status is-${status}`} role="status" title={STATUS_HELP[status]}>
+          <p className={`rail__status is-${status}`} role="status">
             <span className="dot" aria-hidden="true" />
             {STATUS_LABEL[status]}
+            <Info text={STATUS_HELP[status]} />
           </p>
           {status === 'ready' && (
             <p className="rail__mode" title={demo
-              ? 'This public demo uses generated sample data. Importing, loading and clearing data are turned off so no one can change it.'
+              ? 'Generated sample data. Importing and clearing are off; run CustomerIQ locally to use your own data.'
               : 'Running on your own computer: you can import, replace and clear your data. A backup is taken before every change.'}>
               {demo ? 'Public demo · read-only' : 'Your workspace · import on'}
             </p>

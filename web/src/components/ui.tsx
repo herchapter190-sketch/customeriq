@@ -1,4 +1,4 @@
-import { useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
+import { useId, useRef, useState, useSyncExternalStore, type HTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, pending, saveBlob } from '../api/client'
 import { toCsv } from '../lib/csv'
@@ -9,6 +9,8 @@ import { ROUTES } from '../routes'
 import { useScene } from '../scene/store'
 import { useIsStandard } from '../lib/viewMode'
 import { ErrorPanel, Loading, Notice } from './Status'
+import { Info } from './charts'
+import type { Insight } from '../api/types'
 
 /* ------------------------------------------------------------------ page head */
 
@@ -70,19 +72,22 @@ export function FilterBar({ segments = true }: { segments?: boolean }) {
       <div className="filters__row">
         <label className="field">
           <span className="field__label">Period</span>
-          <select value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
+          <select value={preset} onChange={(e) => (e.target.value === 'Custom' ? start && end && setRange(start, end) : setPreset(e.target.value as Preset))}>
             {PRESETS.map((p) => (
               <option key={p}>{p}</option>
             ))}
-            {preset === 'Custom' && <option>Custom</option>}
+            <option value="Custom">Custom range</option>
           </select>
         </label>
-        <div className="filters__dates" role="group" aria-label="Date range" title="Analyses use the transaction dates in your file. Pick a preset or type exact dates.">
-          <span className="field__label">From</span>
-          <input type="date" aria-label="Start date" value={start ?? ''} min={lo ?? undefined} max={end ?? undefined} onChange={(e) => onDate(0, e.target.value)} />
-          <span className="field__label">to</span>
-          <input type="date" aria-label="End date" value={end ?? ''} min={start ?? undefined} max={hi ?? undefined} onChange={(e) => onDate(1, e.target.value)} />
-        </div>
+        {/* exact dates only for a custom range, so the period is never set in two places at once */}
+        {preset === 'Custom' && (
+          <div className="filters__dates" role="group" aria-label="Date range">
+            <span className="field__label">From</span>
+            <input type="date" aria-label="Start date" value={start ?? ''} min={lo ?? undefined} max={end ?? undefined} onChange={(e) => onDate(0, e.target.value)} />
+            <span className="field__label">to</span>
+            <input type="date" aria-label="End date" value={end ?? ''} min={start ?? undefined} max={hi ?? undefined} onChange={(e) => onDate(1, e.target.value)} />
+          </div>
+        )}
         {segments && (
           <div className="field">
             <span className="field__label" id={`${id}-l`}>Customer groups</span>
@@ -110,7 +115,9 @@ export function FilterBar({ segments = true }: { segments?: boolean }) {
           Source: {dataset?.meta.source_name ?? 'unknown'}
         </p>
         <div className="filters__actions">
-          <button type="button" className="linkish" onClick={() => (d.resetFilters(), say('All dates and all segments again.'))}>Reset filters</button>
+          {(preset !== 'All data' || picked.length > 0) && (
+            <button type="button" className="linkish" onClick={() => (d.resetFilters(), say('All dates and all segments again.'))}>Reset filters</button>
+          )}
           <button type="button" className="linkish" onClick={() => (d.refresh(), say('Data re-read from the database.'))}>Refresh data</button>
           <button type="button" className="linkish" onClick={() => (d.resetAll(), say('Settings restored to defaults. Your data was not changed.'))} title="Filters, scoring rules, inactivity rules, currency and animations back to their defaults. Your data is not touched.">Reset everything</button>
         </div>
@@ -191,7 +198,81 @@ export function Pills({ options, value, onChange, label }: { options: readonly s
   )
 }
 
-/** First API insight in the given categories, shown as a one-line takeaway (Streamlit story.takeaway). */
+const KIND: Record<string, { icon: string; label: string; tip: string }> = {
+  risk: { icon: '▼', label: 'Risk', tip: 'Could cost you revenue or customers if left alone.' },
+  opportunity: { icon: '▲', label: 'Opportunity', tip: 'A strength or opening you can build on.' },
+}
+const NOTE = { icon: '●', label: 'Note', tip: 'Context worth knowing; no action is urgent.' }
+
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
+/** Labels for metric parts the API sends without one, by insight key (wording from the insight's observation). */
+const UNLABELED: Record<string, string> = { high_value_at_risk: 'Their historical revenue' }
+
+/** "Repeat revenue share: 61% | top 1%: 9%" -> [{label, value}]; parts without a label keep only a value. */
+function metricParts(metric: string, key: string) {
+  return metric.split(' | ').flatMap((p) => {
+    const i = p.indexOf(': ')
+    if (i >= 0) {
+      const label = cap(p.slice(0, i))
+      const value = p.slice(i + 2).replaceAll(' -> ', ' → ')
+      // segment_aov: "Champions AOV: 292 vs overall 227 (370 customers)" -> three figures
+      const vs = /^(.+) vs overall (.+) \(([\d,]+) customers\)$/.exec(value)
+      return vs ? [{ label, value: vs[1] }, { label: 'Overall AOV', value: vs[2] }, { label: 'Customers', value: vs[3] }] : [{ label, value }]
+    }
+    const m = /^([+-]?[\d.,]+%?) (.+)$/.exec(p) // "91 customers" -> 91 / Customers
+    return [m ? { label: cap(m[2]), value: m[1] } : { label: UNLABELED[key] ?? '', value: p }]
+  })
+}
+
+/** One finding: what kind it is, what happened, why it matters, and the evidence. Detail and next step sit in the "i" tooltip. */
+export function Signal({ ins, ...li }: { ins: Insight } & HTMLAttributes<HTMLLIElement>) {
+  const k = KIND[ins.kind] ?? NOTE
+  return (
+    <li {...li} className={`signal is-${ins.kind}`}>
+      <span className="signal__kind" title={k.tip}>
+        <span><span aria-hidden="true">{k.icon}</span> {k.label}</span>
+        {ins.category !== k.label && <small>{ins.category}</small>}
+      </span>
+      <span className="signal__body">
+        <span className="signal__title">{ins.title}</span>
+        <span className="signal__why">{ins.why_it_matters}</span>
+      </span>
+      <span className="signal__metrics">
+        {metricParts(ins.metric, ins.key).map((m, i) => (
+          <span key={i} className="signal__fig">
+            <b>{m.value}</b>
+            {m.label && <small>{m.label}</small>}
+          </span>
+        ))}
+      </span>
+      <Info text={`${ins.observation} Next step: ${ins.action}`} />
+    </li>
+  )
+}
+
+export function Signals({ items }: { items: Insight[] }) {
+  return (
+    <ul className="signals insights__list">
+      {items.map((ins) => <Signal key={ins.key} ins={ins} />)}
+    </ul>
+  )
+}
+
+/** Key for the signal badges, so Risk vs Opportunity reads at a glance. */
+export function SignalLegend() {
+  return (
+    <p className="signal-legend">
+      {[KIND.risk, KIND.opportunity, NOTE].map((k) => (
+        <span key={k.label} className={`signal-legend__item is-${k.label.toLowerCase()}`}>
+          <span aria-hidden="true">{k.icon}</span> <b>{k.label}</b> {k.tip}
+        </span>
+      ))}
+    </p>
+  )
+}
+
+/** First API insight in the given categories, as one compact signal line. */
 export function Takeaway({ categories }: { categories: string[] }) {
   const { filters, key, currency } = useDataset()
   const [res] = useAsync((signal) => api.analytics('insights', filters, signal, currency ? { currency } : {}), [key, currency])
@@ -199,12 +280,8 @@ export function Takeaway({ categories }: { categories: string[] }) {
   const ins = res.data.find((i) => categories.includes(i.category))
   if (!ins) return null
   return (
-    <aside className={`takeaway is-${ins.kind}`} aria-label="Key finding">
-      <p className="takeaway__meta">
-        {ins.category.toLowerCase() === ins.kind.toLowerCase() ? ins.category : `${ins.category} · ${ins.kind}`}
-      </p>
-      <p className="takeaway__title">{ins.title}</p>
-      <p className="takeaway__action"><span>Action</span> {ins.action}</p>
+    <aside className="takeaway" aria-label="Key finding">
+      <Signals items={[ins]} />
     </aside>
   )
 }
@@ -340,6 +417,8 @@ export interface Column<T> {
   label: string
   render: (row: T) => ReactNode
   numeric?: boolean
+  /** header tooltip */
+  tip?: string
 }
 
 export function DataTable<T>({
@@ -366,7 +445,7 @@ export function DataTable<T>({
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key} scope="col" className={c.numeric ? 'num' : undefined}>
+              <th key={c.key} scope="col" className={c.numeric ? 'num' : undefined} title={c.tip}>
                 {c.label}
               </th>
             ))}
@@ -413,13 +492,14 @@ export function Figures({ items }: { items: { label: string; value: ReactNode; n
   )
 }
 
-export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+export function Section({ title, children, aside, note }: { title: string; children: ReactNode; aside?: ReactNode; note?: string }) {
   const id = useId()
   return (
     <section className="section" aria-labelledby={id}>
       <div className="section__head">
         <h2 id={id} className="section-title">
           {title}
+          {note && <Info text={note} />}
         </h2>
         {aside}
       </div>

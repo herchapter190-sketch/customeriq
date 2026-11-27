@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { rows, type AnalyticsMap, type Insight } from '../api/types'
 import { ErrorPanel, Loading, Notice, SessionGate } from '../components/Status'
-import { BarList, DatasetGate, DataTable, Details, FilterBar, Section, StandardOnly, ThreeDOnly } from '../components/ui'
+import { BarList, DatasetGate, DataTable, Details, FilterBar, Section, SignalLegend, Signals, StandardOnly, ThreeDOnly } from '../components/ui'
 import { ProductIntro } from '../components/Tour'
-import { CategoryChart, Donut, Panel, shortMonth } from '../components/charts'
+import { CategoryChart, Donut, Info, Panel, shortMonth } from '../components/charts'
 import { SERIES } from '../lib/palette'
 import { useIsStandard } from '../lib/viewMode'
 import { useDataset } from '../lib/dataset'
@@ -266,7 +266,7 @@ function Insights({ result, onRetry }: { result: AsyncState<Insight[]>; onRetry:
   if (result.state === 'error') {
     return (
       <section className="insights" aria-labelledby="insights-h">
-        <h2 id="insights-h" className="section-title">Business insights and key takeaways</h2>
+        <h2 id="insights-h" className="section-title">Key signals</h2>
         <ErrorPanel error={result.error} onRetry={onRetry} />
       </section>
     )
@@ -274,31 +274,19 @@ function Insights({ result, onRetry }: { result: AsyncState<Insight[]>; onRetry:
   const insights = result.state === 'done' ? result.data : null
   return (
     <section className="insights" aria-labelledby="insights-h">
-      <h2 id="insights-h" className="section-title">Business insights and key takeaways</h2>
+      <h2 id="insights-h" className="section-title">
+        Key signals
+        <Info text="Automatic checks on this period's sales. Each line says what is happening, why it matters to the business, and the figures behind it. The i on each line gives the detail and a suggested next step." />
+      </h2>
       {insights == null ? (
         <Loading label="Reading findings" />
       ) : insights.length === 0 ? (
-        <p className="muted">Not enough data yet to suggest actions for this selection.</p>
+        <p className="muted">Not enough data for signals in this selection.</p>
       ) : (
         <>
-          <ol className="insights__list">
-            {insights.slice(0, standard ? 6 : 3).map((ins, i) => (
-              <li key={ins.key} className={`insight is-${ins.kind}`}>
-                <span className="insight__num">{String(i + 1).padStart(2, '0')}</span>
-                <div>
-                  <p className="insight__meta">
-                    {ins.category} · {ins.kind}
-                  </p>
-                  <h3 className="insight__title">{ins.title}</h3>
-                  <p className="insight__obs">{ins.observation}</p>
-                  <p className="insight__action">
-                    <span>Action</span> {ins.action}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="small"><Link to="/reports">All findings →</Link></p>
+          <SignalLegend />
+          <Signals items={insights.slice(0, standard ? 5 : 3)} />
+          {insights.length > (standard ? 5 : 3) && <p className="small"><Link to="/reports">All {insights.length} findings →</Link></p>}
         </>
       )}
     </section>

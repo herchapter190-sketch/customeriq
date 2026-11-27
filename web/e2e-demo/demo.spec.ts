@@ -28,18 +28,21 @@ test.describe('public demo: Data Management is read-only', () => {
     })
   }
 
-  test('rail and overview explain the demo, its import path and the 3D tour', async ({ page }) => {
+  test('rail and overview label the demo, offer no import actions, and keep the 3D tour', async ({ page }) => {
     await useMode(page, 'standard', { still: true })
     await page.goto('/')
     await expectReady(page, 'Executive Overview')
     await expect(page.getByText('Public demo · read-only')).toBeVisible()
     await expect(page.locator('.filters__badge')).toContainText('Synthetic demo data')
-    await page.getByRole('link', { name: 'How to import data' }).click()
-    await expect(page.getByRole('tab', { name: 'How importing works' })).toHaveAttribute('aria-selected', 'true')
+    // No import / check / understand / act promo in the demo: the rail link and the intro steps are gone.
+    await expect(page.getByRole('link', { name: /import/i })).toHaveCount(0)
+    await expect(page.locator('.intro')).toHaveCount(0)
 
     await useMode(page, '3d', { still: true })
     await page.goto('/')
     await expect(page.getByText('Tour · stop 1 of 6')).toBeVisible()
+    await expect(page.getByRole('link', { name: /import/i })).toHaveCount(0)
+    await expect(page.locator('.intro')).toHaveCount(0)
     await page.getByRole('link', { name: /^Next:/ }).click()
     await expect(page).toHaveURL(/\/segments$/)
     await expect(page.getByText('Tour · stop 2 of 6')).toBeVisible()

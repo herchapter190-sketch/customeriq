@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { setViewMode } from '../lib/viewMode'
+import { useSession } from '../api/session'
 
 /** 3D Exploration is a guided tour: each analytics page is one stop that answers one business question
  *  in its scene. Standard Analytics stays the full workspace (every chart, table, filter and export). */
@@ -47,17 +48,13 @@ export function TourNav({ slug }: { slug: string }) {
   )
 }
 
-/** What CustomerIQ is, who it is for, and the path from a sales file to decisions. */
+/** One line on what CustomerIQ is. Local workspace only; the demo has its own banner. */
 export function ProductIntro() {
+  const { status, demo } = useSession()
+  if (status !== 'ready' || demo) return null // wait for the session, so the demo never flashes it
   return (
     <section className="intro" aria-label="About CustomerIQ">
       <p className="intro__what">Customer analytics for small businesses: who buys, what they are worth, who is drifting away.</p>
-      <ol className="intro__steps">
-        <li><Link to="/data#import"><b>Import</b> CSV or Excel</Link></li>
-        <li><Link to="/data"><b>Check</b> data quality</Link></li>
-        <li><Link to="/segments"><b>Understand</b> customers</Link></li>
-        <li><Link to="/inactive"><b>Act</b> on win-backs</Link></li>
-      </ol>
     </section>
   )
 }

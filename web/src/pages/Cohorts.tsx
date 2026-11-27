@@ -133,7 +133,6 @@ function AverageRetention({ avg, cohorts, horizon, slider, ring }: { avg: Retent
               endLabel
               height={280}
             />
-            <p className="muted small">Select a cohort to compare it with the average.</p>
           </div>
         )}
       </StandardOnly>
@@ -239,10 +238,9 @@ function CohortsBody({ rings, maxK, mom, avg }: { rings: CohortRing[]; maxK: num
         </div>
       </StandardOnly>
 
-      <CohortMatrix rings={rings} maxK={maxK} idx={idx} focus={typeof focus === 'number' ? focus : null} horizon={horizon} slider={slider} />
+      <CohortMatrix rings={rings} maxK={maxK} idx={idx} focus={typeof focus === 'number' ? focus : null} horizon={horizon} />
 
       <Section title="Month-over-month customer retention" aside={<CsvButton rows={mom} name="customeriq_monthly_retention.csv" />}>
-        <p className="muted small">Share of last month’s customers who ordered again.</p>
         <DataTable
           caption="Month-over-month retention"
           rows={mom}
@@ -267,7 +265,7 @@ const monthNum = (iso: string) => Number(iso.slice(0, 4)) * 12 + Number(iso.slic
  * a month the cohort has reached but where nobody bought shows 0 (the SQL returns no row for it);
  * a month after the analysis end date is blank, so it is never mistaken for zero retention.
  */
-function CohortMatrix({ rings, maxK, idx, focus, horizon, slider }: { rings: CohortRing[]; maxK: number; idx: number | null; focus: number | null; horizon: number; slider: ReactNode }) {
+function CohortMatrix({ rings, maxK, idx, focus, horizon }: { rings: CohortRing[]; maxK: number; idx: number | null; focus: number | null; horizon: number }) {
   const { window: [, end] } = useDataset()
   const [metric, setMetric] = useState<'pct' | 'active'>('pct')
   const endNum = end ? monthNum(end) : Infinity
@@ -292,7 +290,7 @@ function CohortMatrix({ rings, maxK, idx, focus, horizon, slider }: { rings: Coh
           <button type="button" className="chip" aria-pressed={metric === 'pct'} onClick={() => setMetric('pct')}>Retention %</button>
           <button type="button" className="chip" aria-pressed={metric === 'active'} onClick={() => setMetric('active')}>Returning customers</button>
         </div>
-        {slider}
+        <span className="muted small">Months after acquisition: {Math.min(horizon, maxK)} (set above)</span>
       </div>
       <div className="table-wrap" role="region" aria-label="Cohort retention matrix" tabIndex={0} style={{ maxHeight: 460 }}>
         <table className="heat heat--dense">
